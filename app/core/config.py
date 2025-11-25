@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     TIMEOUT_REQUEST: int = 15.0
-    PG_BOTAPP_USER: str
+    PG_CARVALIMA_HELPDESK_DBNAME: str
     PG_BOTAPP_PASSWORD: str
     PG_BOTAPP_HOST: str
     PG_BOTAPP_PORT: str
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
 try:
     settings = Settings()
-    DATABASE_URL = f"postgresql+asyncpg://{settings.PG_BOTAPP_USER}:{quote_plus(settings.PG_BOTAPP_PASSWORD)}@{settings.PG_BOTAPP_HOST}:{settings.PG_BOTAPP_PORT}/{settings.PG_BOTAPP_HOST}"
+    DATABASE_URL = f"postgresql+asyncpg://{settings.PG_BOTAPP_USER}:{quote_plus(settings.PG_BOTAPP_PASSWORD)}@{settings.PG_BOTAPP_HOST}:{settings.PG_BOTAPP_PORT}/{settings.PG_CARVALIMA_HELPDESK_DBNAME}"
 except Exception as e:
     logger.error("Erro carregando Settings:", e)
     raise
