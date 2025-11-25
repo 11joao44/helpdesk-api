@@ -1,0 +1,620 @@
+# Define a ordem de execução dos estágios
+stages:
+  - build
+  - deploy
+
+workflow:
+  rules:
+    # Regra para verificar se a variável EXECUTE_PIPELINE é definida como "true"
+    - if: '$EXECUTE_PIPELINE == "true"'
+    - when: never  # Não executa por padrão a cada commit
+
+# ESTÁGIO 1: Construir as imagens Docker (frontend e backend) e enviar para o Registry
+build_images: # MUDANÇA: Renomeado para refletir a construção de múltiplas imagens
+  stage: build
+  tags:
+    - run-cgr-dind
+  
+  image: docker:20.10.16
+  
+  services:
+    - name: docker:20.10.16-dind
+      alias: docker # O alias é importante para o DOCKER_HOST
+      # Adiciona a flag para permitir a conexão HTTP com seu registry
+      command: ["--insecure-registry=gitlab.carvalima.com.br:5050"]
+  
+  # --- SEÇÃO CRÍTICA QUE ESTAVA FALTANDO ---
+  variables:
+    # Aponta o cliente Docker para o serviço 'dind' na rede
+    DOCKER_HOST: tcp://docker:2375
+    # Desabilita TLS para a comunicação interna com o dind
+    DOCKER_TLS_CERTDIR: ""
+    # Define uma tag estável para ser usada como cache
+    CACHE_IMAGE_TAG: "$CI_REGISTRY_IMAGE:latest"
+  # ----------------------------------------
+
+  before_script:
+    - echo "--- Verificando o conteúdo do Dockerfile no Runner ---"
+    - cat Dockerfile | head -n 5
+    - echo "----------------------------------------------------"
+
+  script:
+    - echo "Aguardando o serviço Docker-in-Docker iniciar..."
+    - sleep 15
+    - echo "Fazendo login no GitLab Container Registry..."
+    - echo "$CI_JOB_TOKEN" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+
+    # --- INÍCIO DA LÓGICA DE CACHE ---
+
+    - echo "Puxando a imagem mais recente para usar como cache..."
+    # Usamos "|| true" para que o pipeline não falhe se a imagem ainda não existir (ex: primeira execução)
+    - docker pull $CACHE_IMAGE_TAG || true
+    
+    - echo "Construindo a nova imagem usando o cache..."
+    # A mágica acontece aqui com a flag --cache-from
+    - docker build --cache-from $CACHE_IMAGE_TAG -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" -t "$CACHE_IMAGE_TAG" .
+    #- docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" .
+
+    # --- FIM DA LÓGICA DE CACHE ---
+
+    - echo "Enviando as imagens para o Registry..."
+    # Envia a imagem com a tag específica do commit
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    # Envia a imagem com a tag 'latest' para ser usada no próximo build
+    - docker push $CACHE_IMAGE_TAG
+
+
+# # ESTÁGIO 2: Fazer o deploy da imagem no servidor VPS
+# deploy_production_cgb:
+#   stage: deploy
+#   tags:
+#     - run-dind # Garanta que seu runner tenha essa tag
+#   image: docker:20.10.16
+  
+#   services:
+#     - name: docker:20.10.16-dind
+#       alias: docker # O alias é importante para o DOCKER_HOST
+#       # Adiciona a flag para permitir a conexão HTTP com seu registry
+#       command: ["--insecure-registry=gitlab.carvalima.com.br:5050"]
+  
+#   # --- SEÇÃO CRÍTICA QUE ESTAVA FALTANDO ---
+#   variables:
+#     # Aponta o cliente Docker para o serviço 'dind' na rede
+#     DOCKER_HOST: tcp://docker:2375
+#     # Desabilita TLS para a comunicação interna com o dind
+#     DOCKER_TLS_CERTDIR: ""
+#     # Define uma tag estável para ser usada como cache
+#     CACHE_IMAGE_TAG: "$CI_REGISTRY_IMAGE:latest"
+#   # ----------------------------------------
+  
+#   # A URL do ambiente agora também é dinâmica!
+#   environment:
+#     name: production
+#     url: https://$SUB_DOMAIN_NAME.$DOMAIN_NAME_CGB
+
+#   script: |
+#       # --- COMANDO MÁGICO PARA CAPTURAR ERROS ---
+#       set -e
+
+#       echo "Iniciando deploy para o projeto: $CI_PROJECT_NAME"
+      
+#       # Configuração do SSH
+#       which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )
+#       eval $(ssh-agent -s)
+#       ssh-add <(echo "$SSH_PRIVATE_KEY")
+#       mkdir -p ~/.ssh && chmod 700 ~/.ssh
+#       ssh-keyscan $VPS_IP_CGB >> ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+#       ssh -A $VPS_USER_CGB@$VPS_IP_CGB "
+#         # 1. Passa as variáveis do GitLab para a sessão SSH remota
+#         export CI_PROJECT_NAME=${CI_PROJECT_NAME}
+#         export CI_SERVER_HOST=${CI_SERVER_HOST}
+#         export CI_PROJECT_PATH=${CI_PROJECT_PATH}
+#         export DOMAIN_NAME=${DOMAIN_NAME_CGB}
+#         export SUB_DOMAIN_NAME=${SUB_DOMAIN_NAME}
+#         export DEPLOY_TOKEN_USER=${DEPLOY_TOKEN_USER}
+#         export DEPLOY_TOKEN_PASSWORD=${DEPLOY_TOKEN_PASSWORD}
+        
+#         # 2. Constrói os nomes dinamicamente no servidor
+#         TARGET_DIR=~/docker-stacks/\$CI_PROJECT_NAME
+#         REPO_URL=git@\$CI_SERVER_HOST:\$CI_PROJECT_PATH.git
+        
+#         echo \"🚀 Deploying project: \$CI_PROJECT_NAME\"
+#         echo \"Target directory: \$TARGET_DIR\"
+#         echo \"Repository URL: \$REPO_URL\"
+  
+#         # Lógica para clonar ou atualizar o repositório
+#         if [ -d \"\$TARGET_DIR\" ]; then
+#           echo '✅ Diretório existente. Atualizando...'
+#           cd \"\$TARGET_DIR\"
+#           git pull origin main
+#         else
+#           echo '🤔 Diretório não encontrado. Clonando o repositório...'
+#           git clone \"\$REPO_URL\" \"\$TARGET_DIR\"
+#           cd \"\$TARGET_DIR\"
+#         fi
+        
+#         echo '--- 📝 Criando arquivo de configuração .env.prod ---'
+#         # Este bloco continua o mesmo, ele já usa as variáveis do GitLab
+#         echo \"DEBUG=${DEBUG}\" > .env.prod
+#         echo \"DOMAIN_NAME=${DOMAIN_NAME_CGB}\" >> .env.prod
+#         echo \"SUB_DOMAIN_NAME=${SUB_DOMAIN_NAME}\" >> .env.prod
+#         echo \"DB_NAME_APP=${DB_NAME_APP}\" >> .env.prod
+#         echo \"DB_USER_APP=${DB_USER_APP}\" >> .env.prod
+#         echo \"DB_PASSWORD_APP=${DB_PASSWORD_APP}\" >> .env.prod
+#         echo \"DB_HOST_APP=${DB_HOST_APP}\" >> .env.prod
+#         echo \"DB_PORT_APP=${DB_PORT_APP}\" >> .env.prod
+#         echo \"SECRET_KEY_DJANGO_CARREGAMENTO=${SECRET_KEY_DJANGO_CARREGAMENTO}\" >> .env.prod
+#         echo \"SSW_DOMINIO=${SSW_DOMINIO}\" >> .env.prod
+#         echo \"SSW_CPF=${SSW_CPF}\" >> .env.prod
+#         echo \"SSW_USUARIO=${SSW_USUARIO}\" >> .env.prod
+#         echo \"SSW_SENHA=${SSW_SENHA}\" >> .env.prod
+#         echo \"DJANGO_DEBUG=${DJANGO_DEBUG}\" >> .env.prod
+#         echo \"SSW_UNIDADE=${SSW_UNIDADE}\" >> .env.prod
+#         echo \"DJANGO_CRYPTOGRAPHY_KEY=${DJANGO_CRYPTOGRAPHY_KEY}\" >> .env.prod
+#         echo \"CREDENTIALS_ENCRYPTION_KEY=${CREDENTIALS_ENCRYPTION_KEY}\" >> .env.prod
+#         echo \"PG_HOST_CARVALIMA=${PG_HOST_CARVALIMA}\" >> .env.prod
+#         echo \"PG_DBNAME_CARVALIMA=${PG_DBNAME_CARVALIMA}\" >> .env.prod
+#         echo \"PG_USER_CARVALIMA=${PG_USER_CARVALIMA}\" >> .env.prod
+#         echo \"PG_PASSWORD_CARVALIMA=${PG_PASSWORD_CARVALIMA}\" >> .env.prod
+#         echo \"PG_SSLMODE_CARVALIMA=${PG_SSLMODE_CARVALIMA}\" >> .env.prod
+#         echo \"PG_PORT_CARVALIMA=${PG_PORT_CARVALIMA}\" >> .env.prod
+#         echo \"REDIS_URL=redis://redis_fotos_operacional:6379/1\" >> .env.prod
+#         echo \"USER_ID=$(id -u)\" >> .env.prod
+#         echo \"GROUP_ID=$(id -g)\" >> .env.prod
+#         echo \"DJANGO_Q_CLUSTER_NAME=${DJANGO_Q_CLUSTER_NAME_CGB}\" >> .env.prod
+#         echo \"CI_PROJECT_NAME=${CI_PROJECT_NAME}\" >> .env.prod
+#         echo \"CI_SERVER_HOST=${CI_SERVER_HOST}\" >> .env.prod
+#         echo \"CI_PROJECT_PATH=${CI_PROJECT_PATH}\" >> .env.prod
+#         echo \"CI_REGISTRY_IMAGE=${CI_REGISTRY_IMAGE}\" >> .env.prod
+#         echo \"IMAGE_VERSION=${CI_COMMIT_SHORT_SHA}\" >> .env.prod
+#         # ===============================================
+#         # ===============================================
+        
+#         echo '--- 🔑 Autenticando no GitLab Registry ---'
+#         echo \"${DEPLOY_TOKEN_PASSWORD}\" | docker login -u \"${DEPLOY_TOKEN_USER}\" --password-stdin $CI_REGISTRY
+        
+#         docker network create traefik || true
+#         docker network create web_fotos_operacional || true
+
+#         echo '--- 🐳 Fazendo deploy com Docker Compose ---'
+#         export CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE
+#         export IMAGE_VERSION=$CI_COMMIT_SHORT_SHA
+        
+#         # ---- LÓGICA BLUE-GREEN ----
+
+#         # 1. Converte o nome do projeto para minúsculas <-- CORREÇÃO
+#         CI_PROJECT_NAME_LOWER=\$(echo \"\$CI_PROJECT_NAME\" | tr '[:upper:]' '[:lower:]')
+
+
+#         # 1. Determina qual é a cor atual e qual será a próxima
+#         if \$(docker ps --format '{{.Names}}' | grep -q \"\${CI_PROJECT_NAME_LOWER}_blue\"); then
+#             CURRENT_COLOR=\"blue\"
+#             NEXT_COLOR=\"green\"
+#         else
+#             CURRENT_COLOR=\"green\" # Assume green como default se nenhum estiver rodando
+#             NEXT_COLOR=\"blue\"
+#         fi
+        
+#         echo \"🚀 Versão atual: \$CURRENT_COLOR. Próxima versão: \$NEXT_COLOR\"
+#         # 2. Sobe o novo ambiente (ex: green)
+#         # A flag '-p' cria um 'projeto' Docker Compose separado, evitando conflitos.
+#         echo \"--- ⬆️  Iniciando a nova versão (\$NEXT_COLOR) --- \"
+#         docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} pull
+#         docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} up -d --remove-orphans
+
+#         # 3. VERIFICAÇÃO DE SAÚDE COM LÓGICA DE ROLLBACK
+#         echo \"--- 🩺 Aguardando a nova versão ficar online e saudável... --- \"
+#         HEALTH_CHECK_URL=\"https://\${SUB_DOMAIN_NAME}.$DOMAIN_NAME_CGB:8089\"
+#         echo \"📝 HEALTH_CHECK LINK: \$HEALTH_CHECK_URL\"
+        
+#         n=0
+#         HEALTHY=false
+#         until [ \"\$n\" -ge 10 ]
+#         do
+#           if curl -s -f -k \"\$HEALTH_CHECK_URL\" > /dev/null; then
+#             echo \"✅ Aplicação online e respondendo com sucesso!\"
+#             HEALTHY=true
+#             break
+#           fi
+          
+#           n=\$((n+1)) 
+#           echo \"Tentativa \$n/10 falhou. Aguardando 6 segundos...\"
+#           sleep 6
+#         done
+
+#         # =========================================================================
+#         # 4. DECISÃO FINAL: PROSSEGUIR COM O DEPLOY OU FAZER ROLLBACK
+#         # =========================================================================
+#         if [ \"\$HEALTHY\" = true ]; then
+#           # Health Check PASSOU: a nova versão está boa.
+#           # Removemos a versão antiga e declaramos vitória.
+#           echo \"--- 👍 Health check bem-sucedido. Finalizando o deploy. --- \"
+#           if [ \"\$CURRENT_COLOR\" != \"\$NEXT_COLOR\" ] && \$(docker ps --format '{{.Names}}' | grep -q \"\${CI_PROJECT_NAME_LOWER}_\${CURRENT_COLOR}\"); then
+#               echo \"--- ⬇️  Removendo a versão antiga (\$CURRENT_COLOR) --- \"
+#               docker compose -p \${CI_PROJECT_NAME_LOWER}_\${CURRENT_COLOR} down
+#           fi
+#           echo \"🎉 Deploy sem downtime concluído! Versão \$NEXT_COLOR está no ar.\"
+#         else
+#           # Health Check FALHOU: a nova versão está com problema.
+#           # Fazemos o rollback e falhamos o pipeline.
+#           echo \"❌ A nova versão não respondeu corretamente. Iniciando rollback automático...\"
+          
+#           echo \"--- Logs da versão que falhou (\$NEXT_COLOR) para depuração --- \"
+#           docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} logs
+          
+#           echo \"--- ⬇️  Derrubando a nova versão que falhou (\$NEXT_COLOR) --- \"
+#           docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} down
+          
+#           echo \"✅ Rollback concluído. A versão antiga (\$CURRENT_COLOR) continua no ar, intocada.\"
+          
+#           # Falha o pipeline explicitamente
+#           exit 1
+#         fi
+
+#       "
+#   only:
+#     - main
+
+# # ESTÁGIO 2: Fazer o deploy da imagem no servidor VPS
+# deploy_production_cgr:
+#   stage: deploy
+#   tags:
+#     - run-cgr-dind # Garanta que seu runner tenha essa tag
+#   image: docker:20.10.16
+  
+#   services:
+#     - name: docker:20.10.16-dind
+#       alias: docker # O alias é importante para o DOCKER_HOST
+#       # Adiciona a flag para permitir a conexão HTTP com seu registry
+#       command: ["--insecure-registry=gitlab.carvalima.com.br:5050"]
+  
+#   # --- SEÇÃO CRÍTICA QUE ESTAVA FALTANDO ---
+#   variables:
+#     # Aponta o cliente Docker para o serviço 'dind' na rede
+#     DOCKER_HOST: tcp://docker:2375
+#     # Desabilita TLS para a comunicação interna com o dind
+#     DOCKER_TLS_CERTDIR: ""
+#     # Define uma tag estável para ser usada como cache
+#     CACHE_IMAGE_TAG: "$CI_REGISTRY_IMAGE:latest"
+#   # ----------------------------------------
+  
+#   # A URL do ambiente agora também é dinâmica!
+#   environment:
+#     name: production
+#     url: https://$SUB_DOMAIN_NAME.$DOMAIN_NAME_CGR
+
+#   script: |
+#       # --- COMANDO MÁGICO PARA CAPTURAR ERROS ---
+#       set -e
+
+#       echo "Iniciando deploy para o projeto: $CI_PROJECT_NAME"
+      
+#       # Configuração do SSH
+#       which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )
+#       eval $(ssh-agent -s)
+#       ssh-add <(echo "$SSH_PRIVATE_KEY")
+#       mkdir -p ~/.ssh && chmod 700 ~/.ssh
+#       ssh-keyscan $VPS_IP_CGR >> ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+#       ssh -A $VPS_USER_CGR@$VPS_IP_CGR "
+#         # Adiciona a chave do host do GitLab ao known_hosts DENTRO do servidor remoto
+#         mkdir -p ~/.ssh && chmod 700 ~/.ssh
+#         ssh-keyscan ${CI_SERVER_HOST} >> ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+
+#         # 1. Passa as variáveis do GitLab para a sessão SSH remota
+#         export CI_PROJECT_NAME=${CI_PROJECT_NAME}
+#         export CI_SERVER_HOST=${CI_SERVER_HOST}
+#         export CI_PROJECT_PATH=${CI_PROJECT_PATH}
+#         export DOMAIN_NAME=${DOMAIN_NAME_CGR}
+#         export SUB_DOMAIN_NAME=${SUB_DOMAIN_NAME}
+#         export DEPLOY_TOKEN_USER=${DEPLOY_TOKEN_USER}
+#         export DEPLOY_TOKEN_PASSWORD=${DEPLOY_TOKEN_PASSWORD}
+        
+#         # 2. Constrói os nomes dinamicamente no servidor
+#         TARGET_DIR=~/docker-stacks/\$CI_PROJECT_NAME
+#         REPO_URL=git@\$CI_SERVER_HOST:\$CI_PROJECT_PATH.git
+        
+#         echo \"🚀 Deploying project: \$CI_PROJECT_NAME\"
+#         echo \"Target directory: \$TARGET_DIR\"
+#         echo \"Repository URL: \$REPO_URL\"
+  
+#         # Lógica para clonar ou atualizar o repositório
+#         if [ -d \"\$TARGET_DIR\" ]; then
+#           echo '✅ Diretório existente. Atualizando...'
+#           cd \"\$TARGET_DIR\"
+#           git pull origin main
+#         else
+#           echo '🤔 Diretório não encontrado. Clonando o repositório...'
+#           git clone \"\$REPO_URL\" \"\$TARGET_DIR\"
+#           cd \"\$TARGET_DIR\"
+#         fi
+        
+#         echo '--- 📝 Criando arquivo de configuração .env.prod ---'
+#         # Este bloco continua o mesmo, ele já usa as variáveis do GitLab
+#         echo \"DEBUG=${DEBUG}\" > .env.prod
+#         echo \"DOMAIN_NAME=${DOMAIN_NAME_CGB}\" >> .env.prod
+#         echo \"SUB_DOMAIN_NAME=${SUB_DOMAIN_NAME}\" >> .env.prod
+#         echo \"DB_NAME_APP=${DB_NAME_APP}\" >> .env.prod
+#         echo \"DB_USER_APP=${DB_USER_APP}\" >> .env.prod
+#         echo \"DB_PASSWORD_APP=${DB_PASSWORD_APP}\" >> .env.prod
+#         echo \"DB_HOST_APP=${DB_HOST_APP}\" >> .env.prod
+#         echo \"DB_PORT_APP=${DB_PORT_APP}\" >> .env.prod
+#         echo \"SECRET_KEY_DJANGO_CARREGAMENTO=${SECRET_KEY_DJANGO_CARREGAMENTO}\" >> .env.prod
+#         echo \"SSW_DOMINIO=${SSW_DOMINIO}\" >> .env.prod
+#         echo \"SSW_CPF=${SSW_CPF}\" >> .env.prod
+#         echo \"SSW_USUARIO=${SSW_USUARIO}\" >> .env.prod
+#         echo \"SSW_SENHA=${SSW_SENHA}\" >> .env.prod
+#         echo \"DJANGO_DEBUG=${DJANGO_DEBUG}\" >> .env.prod
+#         echo \"SSW_UNIDADE=${SSW_UNIDADE}\" >> .env.prod
+#         echo \"DJANGO_CRYPTOGRAPHY_KEY=${DJANGO_CRYPTOGRAPHY_KEY}\" >> .env.prod
+#         echo \"CREDENTIALS_ENCRYPTION_KEY=${CREDENTIALS_ENCRYPTION_KEY}\" >> .env.prod
+#         echo \"PG_HOST_CARVALIMA=${PG_HOST_CARVALIMA}\" >> .env.prod
+#         echo \"PG_DBNAME_CARVALIMA=${PG_DBNAME_CARVALIMA}\" >> .env.prod
+#         echo \"PG_USER_CARVALIMA=${PG_USER_CARVALIMA}\" >> .env.prod
+#         echo \"PG_PASSWORD_CARVALIMA=${PG_PASSWORD_CARVALIMA}\" >> .env.prod
+#         echo \"PG_SSLMODE_CARVALIMA=${PG_SSLMODE_CARVALIMA}\" >> .env.prod
+#         echo \"PG_PORT_CARVALIMA=${PG_PORT_CARVALIMA}\" >> .env.prod
+#         echo \"REDIS_URL=redis://redis_fotos_operacional:6379/1\" >> .env.prod
+#         echo \"USER_ID=$(id -u)\" >> .env.prod
+#         echo \"GROUP_ID=$(id -g)\" >> .env.prod
+#         echo \"DJANGO_Q_CLUSTER_NAME=${DJANGO_Q_CLUSTER_NAME_CGR}\" >> .env.prod
+#         echo \"CI_PROJECT_NAME=${CI_PROJECT_NAME}\" >> .env.prod
+#         echo \"CI_SERVER_HOST=${CI_SERVER_HOST}\" >> .env.prod
+#         echo \"CI_PROJECT_PATH=${CI_PROJECT_PATH}\" >> .env.prod
+#         echo \"CI_REGISTRY_IMAGE=${CI_REGISTRY_IMAGE}\" >> .env.prod
+#         echo \"IMAGE_VERSION=${CI_COMMIT_SHORT_SHA}\" >> .env.prod
+#         # ===============================================
+        
+#         echo '--- 🔑 Autenticando no GitLab Registry ---'
+#         echo \"${DEPLOY_TOKEN_PASSWORD}\" | docker login -u \"${DEPLOY_TOKEN_USER}\" --password-stdin $CI_REGISTRY
+    
+#         docker network create traefik || true
+#         docker network create web_fotos_operacional || true
+        
+#         echo '--- 🐳 Fazendo deploy com Docker Compose ---'
+#         export CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE
+#         export IMAGE_VERSION=$CI_COMMIT_SHORT_SHA
+        
+#         # ---- LÓGICA BLUE-GREEN ----
+
+#         # 1. Converte o nome do projeto para minúsculas <-- CORREÇÃO
+#         CI_PROJECT_NAME_LOWER=\$(echo \"\$CI_PROJECT_NAME\" | tr '[:upper:]' '[:lower:]')
+
+
+#         # 1. Determina qual é a cor atual e qual será a próxima
+#         if \$(docker ps --format '{{.Names}}' | grep -q \"\${CI_PROJECT_NAME_LOWER}_blue\"); then
+#             CURRENT_COLOR=\"blue\"
+#             NEXT_COLOR=\"green\"
+#         else
+#             CURRENT_COLOR=\"green\" # Assume green como default se nenhum estiver rodando
+#             NEXT_COLOR=\"blue\"
+#         fi
+        
+#         echo \"🚀 Versão atual: \$CURRENT_COLOR. Próxima versão: \$NEXT_COLOR\"
+#         # 2. Sobe o novo ambiente (ex: green)
+#         # A flag '-p' cria um 'projeto' Docker Compose separado, evitando conflitos.
+#         echo \"--- ⬆️  Iniciando a nova versão (\$NEXT_COLOR) --- \"
+#         docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} pull
+#         docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} up -d --remove-orphans
+
+#         # 3. VERIFICAÇÃO DE SAÚDE COM LÓGICA DE ROLLBACK
+#         echo \"--- 🩺 Aguardando a nova versão ficar online e saudável... --- \"
+#         HEALTH_CHECK_URL=\"https://\${SUB_DOMAIN_NAME}.$DOMAIN_NAME_CGR:8089\"
+#         echo \"📝 HEALTH_CHECK LINK: \$HEALTH_CHECK_URL\"
+        
+#         n=0
+#         HEALTHY=false
+#         until [ \"\$n\" -ge 10 ]
+#         do
+#           if curl -s -f -k \"\$HEALTH_CHECK_URL\" > /dev/null; then
+#             echo \"✅ Aplicação online e respondendo com sucesso!\"
+#             HEALTHY=true
+#             break
+#           fi
+          
+#           n=\$((n+1)) 
+#           echo \"Tentativa \$n/10 falhou. Aguardando 6 segundos...\"
+#           sleep 6
+#         done
+
+#         # =========================================================================
+#         # 4. DECISÃO FINAL: PROSSEGUIR COM O DEPLOY OU FAZER ROLLBACK
+#         # =========================================================================
+#         if [ \"\$HEALTHY\" = true ]; then
+#           # Health Check PASSOU: a nova versão está boa.
+#           # Removemos a versão antiga e declaramos vitória.
+#           echo \"--- 👍 Health check bem-sucedido. Finalizando o deploy. --- \"
+#           if [ \"\$CURRENT_COLOR\" != \"\$NEXT_COLOR\" ] && \$(docker ps --format '{{.Names}}' | grep -q \"\${CI_PROJECT_NAME_LOWER}_\${CURRENT_COLOR}\"); then
+#               echo \"--- ⬇️  Removendo a versão antiga (\$CURRENT_COLOR) --- \"
+#               docker compose -p \${CI_PROJECT_NAME_LOWER}_\${CURRENT_COLOR} down
+#           fi
+#           echo \"🎉 Deploy sem downtime concluído! Versão \$NEXT_COLOR está no ar.\"
+#         else
+#           # Health Check FALHOU: a nova versão está com problema.
+#           # Fazemos o rollback e falhamos o pipeline.
+#           echo \"❌ A nova versão não respondeu corretamente. Iniciando rollback automático...\"
+          
+#           echo \"--- Logs da versão que falhou (\$NEXT_COLOR) para depuração --- \"
+#           docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} logs
+          
+#           echo \"--- ⬇️  Derrubando a nova versão que falhou (\$NEXT_COLOR) --- \"
+#           docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} down
+          
+#           echo \"✅ Rollback concluído. A versão antiga (\$CURRENT_COLOR) continua no ar, intocada.\"
+          
+#           # Falha o pipeline explicitamente
+#           exit 1
+#         fi
+
+#       "
+#   only:
+#     - main
+
+# ESTÁGIO 2: Fazer o deploy da imagem no servidor VPS
+deploy_test:
+  stage: deploy
+  tags:
+    - run-dind-test
+  image: docker:20.10.16
+  
+  services:
+    - name: docker:20.10.16-dind
+      alias: docker # O alias é importante para o DOCKER_HOST
+      # Adiciona a flag para permitir a conexão HTTP com seu registry
+      command: ["--insecure-registry=gitlab.carvalima.com.br:5050"]
+  
+  # --- SEÇÃO CRÍTICA QUE ESTAVA FALTANDO ---
+  variables:
+    # Aponta o cliente Docker para o serviço 'dind' na rede
+    DOCKER_HOST: tcp://docker:2375
+    # Desabilita TLS para a comunicação interna com o dind
+    DOCKER_TLS_CERTDIR: ""
+    # Define uma tag estável para ser usada como cache
+    CACHE_IMAGE_TAG: "$CI_REGISTRY_IMAGE:latest"
+  # ----------------------------------------
+  
+  # A URL do ambiente agora também é dinâmica!
+  environment:
+    name: production
+    url: https://$SUB_DOMAIN_NAME.$DOMAIN_NAME_TESTE
+
+  script: |
+      # --- COMANDO MÁGICO PARA CAPTURAR ERROS ---
+      set -e
+
+      echo "Iniciando deploy para o projeto: $CI_PROJECT_NAME"
+      
+      # Configuração do SSH
+      which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )
+      eval $(ssh-agent -s)
+      ssh-add <(echo "$SSH_PRIVATE_KEY")
+      mkdir -p ~/.ssh && chmod 700 ~/.ssh
+      ssh-keyscan $VPS_IP_TESTE >> ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+      ssh -A $VPS_USER_TESTE@$VPS_IP_TESTE "
+        # Adiciona a chave do host do GitLab ao known_hosts DENTRO do servidor remoto
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        ssh-keyscan ${CI_SERVER_HOST} >> ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+
+        # 1. Passa as variáveis do GitLab para a sessão SSH remota
+        export CI_PROJECT_NAME=${CI_PROJECT_NAME}
+        export CI_SERVER_HOST=${CI_SERVER_HOST}
+        export CI_PROJECT_PATH=${CI_PROJECT_PATH}
+        export DOMAIN_NAME=${DOMAIN_NAME_TESTE}
+        export SUB_DOMAIN_NAME=${SUB_DOMAIN_NAME}
+        export DEPLOY_TOKEN_USER=${DEPLOY_TOKEN_USER}
+        export DEPLOY_TOKEN_PASSWORD=${DEPLOY_TOKEN_PASSWORD}
+        
+        # 2. Constrói os nomes dinamicamente no servidor
+        TARGET_DIR=~/docker-stacks/\$CI_PROJECT_NAME
+        REPO_URL=git@\$CI_SERVER_HOST:\$CI_PROJECT_PATH.git
+        
+        echo \"🚀 Deploying project: \$CI_PROJECT_NAME\"
+        echo \"Target directory: \$TARGET_DIR\"
+        echo \"Repository URL: \$REPO_URL\"
+  
+        # Lógica para clonar ou atualizar o repositório
+        if [ -d \"\$TARGET_DIR\" ]; then
+          echo '✅ Diretório existente. Atualizando...'
+          cd \"\$TARGET_DIR\"
+          git pull origin main
+        else
+          echo '🤔 Diretório não encontrado. Clonando o repositório...'
+          git clone \"\$REPO_URL\" \"\$TARGET_DIR\"
+          cd \"\$TARGET_DIR\"
+        fi
+        
+        echo '--- 📝 Criando arquivo de configuração .env.prod ---'
+        # Este bloco continua o mesmo, ele já usa as variáveis do GitLab
+        echo \"DEBUG=${DEBUG}\" > .env.prod
+        echo \"DOMAIN_NAME=${DOMAIN_NAME_TESTE}\" >> .env.prod
+        echo \"SUB_DOMAIN_NAME=${SUB_DOMAIN_NAME}\" >> .env.prod
+        echo \"CI_PROJECT_NAME=${CI_PROJECT_NAME}\" >> .env.prod
+        echo \"CI_SERVER_HOST=${CI_SERVER_HOST}\" >> .env.prod
+        echo \"CI_PROJECT_PATH=${CI_PROJECT_PATH}\" >> .env.prod
+        echo \"CI_REGISTRY_IMAGE=${CI_REGISTRY_IMAGE}\" >> .env.prod
+        echo \"IMAGE_VERSION=${CI_COMMIT_SHORT_SHA}\" >> .env.prod
+        # ===============================================
+        
+        echo '--- 🔑 Autenticando no GitLab Registry ---'
+        echo \"${DEPLOY_TOKEN_PASSWORD}\" | docker login -u \"${DEPLOY_TOKEN_USER}\" --password-stdin $CI_REGISTRY
+    
+        docker network create traefik || true
+        docker network create web_fotos_operacional || true
+        
+        echo '--- 🐳 Fazendo deploy com Docker Compose ---'
+        export CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE
+        export IMAGE_VERSION=$CI_COMMIT_SHORT_SHA
+        
+        # ---- LÓGICA BLUE-GREEN ----
+
+        # 1. Converte o nome do projeto para minúsculas <-- CORREÇÃO
+        CI_PROJECT_NAME_LOWER=\$(echo \"\$CI_PROJECT_NAME\" | tr '[:upper:]' '[:lower:]')
+
+
+        # 1. Determina qual é a cor atual e qual será a próxima
+        if \$(docker ps --format '{{.Names}}' | grep -q \"\${CI_PROJECT_NAME_LOWER}_blue\"); then
+            CURRENT_COLOR=\"blue\"
+            NEXT_COLOR=\"green\"
+        else
+            CURRENT_COLOR=\"green\" # Assume green como default se nenhum estiver rodando
+            NEXT_COLOR=\"blue\"
+        fi
+        
+        echo \"🚀 Versão atual: \$CURRENT_COLOR. Próxima versão: \$NEXT_COLOR\"
+        # 2. Sobe o novo ambiente (ex: green)
+        # A flag '-p' cria um 'projeto' Docker Compose separado, evitando conflitos.
+        echo \"--- ⬆️  Iniciando a nova versão (\$NEXT_COLOR) --- \"
+        docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} pull
+        docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} up -d --remove-orphans
+
+        # 3. VERIFICAÇÃO DE SAÚDE COM LÓGICA DE ROLLBACK
+        echo \"--- 🩺 Aguardando a nova versão ficar online e saudável... --- \"
+        HEALTH_CHECK_URL=\"https://\${SUB_DOMAIN_NAME}.$DOMAIN_NAME_TESTE:8086\"
+        echo \"📝 HEALTH_CHECK LINK: \$HEALTH_CHECK_URL\"
+        
+        n=0
+        HEALTHY=false
+        until [ \"\$n\" -ge 10 ]
+        do
+          if curl -s -f -k \"\$HEALTH_CHECK_URL\" > /dev/null; then
+            echo \"✅ Aplicação online e respondendo com sucesso!\"
+            HEALTHY=true
+            break
+          fi
+          
+          n=\$((n+1)) 
+          echo \"Tentativa \$n/10 falhou. Aguardando 6 segundos...\"
+          sleep 6
+        done
+
+        # =========================================================================
+        # 4. DECISÃO FINAL: PROSSEGUIR COM O DEPLOY OU FAZER ROLLBACK
+        # =========================================================================
+        if [ \"\$HEALTHY\" = true ]; then
+          # Health Check PASSOU: a nova versão está boa.
+          # Removemos a versão antiga e declaramos vitória.
+          echo \"--- 👍 Health check bem-sucedido. Finalizando o deploy. --- \"
+          if [ \"\$CURRENT_COLOR\" != \"\$NEXT_COLOR\" ] && \$(docker ps --format '{{.Names}}' | grep -q \"\${CI_PROJECT_NAME_LOWER}_\${CURRENT_COLOR}\"); then
+              echo \"--- ⬇️  Removendo a versão antiga (\$CURRENT_COLOR) --- \"
+              docker compose -p \${CI_PROJECT_NAME_LOWER}_\${CURRENT_COLOR} down
+          fi
+          echo \"🎉 Deploy sem downtime concluído! Versão \$NEXT_COLOR está no ar.\"
+        else
+          # Health Check FALHOU: a nova versão está com problema.
+          # Fazemos o rollback e falhamos o pipeline.
+          echo \"❌ A nova versão não respondeu corretamente. Iniciando rollback automático...\"
+          
+          echo \"--- Logs da versão que falhou (\$NEXT_COLOR) para depuração --- \"
+          docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} logs
+          
+          echo \"--- ⬇️  Derrubando a nova versão que falhou (\$NEXT_COLOR) --- \"
+          docker compose -p \${CI_PROJECT_NAME_LOWER}_\${NEXT_COLOR} down
+          
+          echo \"✅ Rollback concluído. A versão antiga (\$CURRENT_COLOR) continua no ar, intocada.\"
+          
+          # Falha o pipeline explicitamente
+          exit 1
+        fi
+
+      "
+  only:
+    - main

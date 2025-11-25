@@ -1,0 +1,11 @@
+services:
+  backend:
+    build: .
+    container_name: carvalima_helpdesk_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8024 --reload
+    volumes:
+      - .:/code  # Sincroniza pasta local com container (Hot Reload)
+    ports:
+      - "8024:8024"
+    env_file:
+      - .env.prod
