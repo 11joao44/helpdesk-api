@@ -8,8 +8,8 @@ class BitrixProvider:
     Segue estritamente as regras de negócio (validações) do Bitrix.
     """
     def __init__(self):
-        self.webhook_url = settings.BITRIX_WEBHOOK_URL
-        self.timeout = settings.TIMEOUT_REQUEST
+        self.webhook_url = settings["BITRIX_WEBHOOK_URL"]
+        self.timeout = settings["TIMEOUT_REQUEST"]
         
         self.status_map = {
             "2": "Pendente",
