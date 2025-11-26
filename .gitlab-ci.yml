@@ -623,4 +623,4 @@ deploy_test:
 
       "
   only:
-    - main
+    - master
