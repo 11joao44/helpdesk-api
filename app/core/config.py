@@ -2,6 +2,7 @@ from sys import stderr
 from loguru import logger
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from os import getenv
 
 logger.remove()
 logger.add(stderr, level="DEBUG", colorize=True, format="<green>{time:HH:mm:ss}</green> [<level>{level}</level>][<blue>{name}</blue>]<green>{function}</green>><green>{line}</green>: <level>{message}</level>")
