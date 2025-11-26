@@ -28,10 +28,3 @@ deploy:
 
     # sobe sem derrubar execuções anteriores
     - docker compose up --build
-
-  artifacts:
-    when: always
-    paths:
-      - relatorios/
-      - downloads/
-    expire_in: 1 week
