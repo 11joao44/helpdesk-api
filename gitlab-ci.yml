@@ -533,6 +533,11 @@ deploy_test:
         echo \"CI_REGISTRY_IMAGE=${CI_REGISTRY_IMAGE}\" >> .env.prod
         echo \"IMAGE_VERSION=${CI_COMMIT_SHORT_SHA}\" >> .env.prod
         echo \"BITRIX_WEBHOOK_URL=${BITRIX_WEBHOOK_URL}\" >> .env.prod
+        echo \"PG_CARVALIMA_HELPDESK_DBNAME=${PG_CARVALIMA_HELPDESK_DBNAME}\" >> .env.prod
+        echo \"PG_BOTAPP_HOST=${PG_BOTAPP_HOST}\" >> .env.prod
+        echo \"PG_BOTAPP_PASSWORD=${PG_BOTAPP_PASSWORD}\" >> .env.prod
+        echo \"PG_BOTAPP_PORT=${PG_BOTAPP_PORT}\" >> .env.prod
+        echo \"PG_BOTAPP_USER=${PG_BOTAPP_USER}\" >> .env.prod
         # ===============================================
         
         echo '--- 🔑 Autenticando no GitLab Registry ---'
