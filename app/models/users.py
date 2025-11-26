@@ -6,9 +6,12 @@ class UserModel(Base):
     __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True)
-    username = Column(String(64), index=True, nullable=False)
+    full_name = Column(String(64), index=True, nullable=False)
+    matricula = Column(String(15), unique=True, nullable=False)
     email = Column(String(128), unique=True, nullable=False)
+    cpf = Column(String(128), unique=True, nullable=False)
     hashed_password = Column(String(256), nullable=False)
+    department = Column(String(64), nullable=False)
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
     is_admin = Column(Boolean, nullable=False, server_default=text("false"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
