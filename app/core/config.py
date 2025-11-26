@@ -17,11 +17,11 @@ class Settings(BaseSettings):
     PG_BOTAPP_USER: str
     PG_BOTAPP_PORT: str
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=None, env_file_encoding="utf-8")
 
 try:
     settings = Settings()
     DATABASE_URL = f"postgresql+asyncpg://{settings.PG_BOTAPP_USER}:{quote_plus(settings.PG_BOTAPP_PASSWORD)}@{settings.PG_BOTAPP_HOST}:{settings.PG_BOTAPP_PORT}/{settings.PG_CARVALIMA_HELPDESK_DBNAME}"
 except Exception as e:
-    logger.error("Erro carregando Settings:", e)
+    logger.error(f"Erro carregando Settings (Variável de ambiente faltando?): {e}")
     raise
