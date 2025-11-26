@@ -1,8 +1,6 @@
 services:
   backend:
     build: .
-    volumes:
-      - .:/code  # Sincroniza pasta local com container (Hot Reload)
     expose:
       - "8024"
     environment:
