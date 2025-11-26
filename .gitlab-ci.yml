@@ -11,7 +11,7 @@ deploy:
   stage: deploy
   image: docker:latest
   tags:
-    - run
+    - test
   retry: 2
   script:
     - echo "Executando job..."
