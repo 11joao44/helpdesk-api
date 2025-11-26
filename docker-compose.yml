@@ -1,6 +1,7 @@
 services:
   backend:
     build: .
+    user: root
     expose:
       - "8024"
     environment:
