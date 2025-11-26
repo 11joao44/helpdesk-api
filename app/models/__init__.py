@@ -5,7 +5,7 @@ class UserModel(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    username = Column(String(64), index=True, nullable=False)
+    full_name = Column(String(64), index=True, nullable=False)
     email = Column(String(128), unique=True, nullable=False)
     hashed_password = Column(String(256), nullable=False)
     is_active = Column(Boolean, nullable=False, server_default=text("true"))

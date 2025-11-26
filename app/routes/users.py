@@ -6,6 +6,7 @@ from app.services.users import UserService
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import session_db
 from app.core.security import require_admin
+from loguru import logger
 
 router = APIRouter(prefix="/auth", tags=["users"])
 
@@ -13,13 +14,16 @@ def get_service(db: AsyncSession = Depends(session_db)) -> UserService:
     return UserService(UserRepository(db))
 
 
+@router.get('/users', status_code=status.HTTP_200_OK,)
+async def get(): return {"data": "Rota /users em funcionamento!"}
+
 @router.get('/users/{user_id}', status_code=status.HTTP_200_OK, response_model=UserOut)
 async def list(user_id: int, service: UserService = Depends(get_service), admin: UserModel = Depends(require_admin)):
     return await service.list(user_id)
 
 
-@router.post('/register', status_code=status.HTTP_201_CREATED, response_model=UserOut)
-async def create(data: UserRegister, service: UserService = Depends(get_service), admin: UserModel = Depends(require_admin)):
+@router.post('/users', status_code=status.HTTP_201_CREATED, response_model=UserOut)
+async def create(data: UserRegister, service: UserService = Depends(get_service)):
     return await service.create(data)
 
 

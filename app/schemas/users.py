@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr, ConfigDict
 from datetime import datetime
 
 class UserSchema(BaseModel):
-    username: str
+    full_name: str
     email: EmailStr
     is_active: bool
     is_admin: bool
@@ -14,20 +14,25 @@ class UserSchema(BaseModel):
     )
 
 class UserRegister(BaseModel):
-    username: str
+    full_name: str
     email: EmailStr
     password: str
+    department: str
+    cpf: str
+    matricula: str
+
 class UserDetailsSchema(UserSchema):
-    username: str
+    full_name: str
     email: EmailStr
     password: str
+
 class UserLogin(BaseModel):
-    email: EmailStr
+    matricula: str
     password: str
 
 class UserOut(BaseModel):
     id: int
-    username: str
+    full_name: str
     email: EmailStr
     is_active: bool
     is_admin: Optional[bool] = False

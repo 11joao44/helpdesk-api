@@ -13,6 +13,12 @@ class UserRepository:
             select(UserModel).where(UserModel.id == id)
         )
         return result.scalar_one_or_none()
+    
+    async def get_by_matricula(self, matricula: str) -> UserModel | None:
+        result = await self.session.execute(
+            select(UserModel).where(UserModel.matricula == matricula)
+        )
+        return result.scalar_one_or_none()
 
     async def get_by_email(self, email: EmailStr) -> UserModel | None:
         result = await self.session.execute(

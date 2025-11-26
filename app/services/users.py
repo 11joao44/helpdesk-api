@@ -1,16 +1,16 @@
 from typing import Any, Dict
 from fastapi import HTTPException, status
-from passlib.context import CryptContext
 from app.repositories.users import UserRepository
 from app.models.users import UserModel
 from app.schemas.users import UserLogin, UserOut, UserRegister
 from app.core.config import settings
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
+from app.core.config import logger
+from bcrypt import gensalt, hashpw, checkpw
+
 
 from app.utils import not_found
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class UserService:
     def __init__(self, user_repo: UserRepository):
@@ -30,9 +30,12 @@ class UserService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Senha deve ter pelo menos 8 caracteres.")
         
         user = UserModel(
-            username = data.username,
+            full_name = data.full_name,
             email = data.email,
-            hashed_password = self.hash_password(data.password)
+            hashed_password = self.hash_password(data.password),
+            department = data.department,
+            cpf = data.cpf,
+            matricula = data.matricula
         )
          
         return await self.user_repo.create(user)
@@ -48,15 +51,15 @@ class UserService:
         await self.user_repo.delete(user)
 
     def hash_password(self, password: str) -> str:
-        return pwd_context.hash(password)
-    
-    def verify_password(self, password: str, hash_password: str) -> bool:
-        return pwd_context.verify(password, hash_password)
+        return hashpw(password.encode('utf-8'), gensalt()).decode('utf-8')
+
+    def verify_password(self,  plain_password: str, hashed_password: str) -> bool:
+        return checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
     
     async def login(self, data: UserLogin) -> Dict[str, Any]:
-        user = await self.user_repo.get_by_email(data.email)
+        user = await self.user_repo.get_by_matricula(data.matricula)
 
-        if not user or not pwd_context.verify(data.password, user.hashed_password):
+        if not user or not self.verify_password(data.password, user.hashed_password):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas.")
             
         return {
@@ -70,7 +73,7 @@ class UserService:
 
     async def refresh_token(self, refresh_token: str) -> str:
         try:
-            payload = jwt.decode(refresh_token, settings.SECRET_KEY, settings.ALGORITHM)
+            payload = jwt.decode(refresh_token, settings['SECRET_KEY'], settings['ALGORITHM'])
 
             if payload.get("type") != "refresh":
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token de refresh inválido ou expirado.")
@@ -95,7 +98,7 @@ class UserService:
         now = datetime.now(timezone.utc)
         to_encode.update({"exp": now + timedelta(minutes=expire_delta), "iat": now, "nbf": now})
 
-        return jwt.encode(to_encode, settings.SECRET_KEY, settings.ALGORITHM)
+        return jwt.encode(to_encode, settings['SECRET_KEY'], settings['ALGORITHM'])
 
     def create_refresh_token(self, data: dict, expire_delta: int = 7 * 24 * 60) -> str:
         to_encode = data.copy()
@@ -104,4 +107,4 @@ class UserService:
         now = datetime.now(timezone.utc)
         to_encode.update({"exp": now + timedelta(minutes=expire_delta), "type": "refresh", "iat": now, "nbf": now})
 
-        return jwt.encode(to_encode, settings.SECRET_KEY, settings.ALGORITHM)
+        return jwt.encode(to_encode, settings['SECRET_KEY'], settings['ALGORITHM'])

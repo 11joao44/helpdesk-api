@@ -17,7 +17,7 @@ async def locked_route(token: str = Depends(oauth2_scheme), db: AsyncSession = D
     )
 
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(token, settings['SECRET_KEY'], algorithms=[settings['ALGORITHM']])
 
         user_id: str = payload.get("sub")
 
