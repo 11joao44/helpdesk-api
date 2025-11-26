@@ -5,7 +5,20 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8024 --reload
     volumes:
       - .:/code  # Sincroniza pasta local com container (Hot Reload)
-    ports:
-      - "8024:8024"
+    expose:
+      - "8024"
     env_file:
       - .env.prod
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.helpdesk.rule=Host(`${SUB_DOMAIN_NAME}.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.helpdesk.entrypoints=websecure"
+      - "traefik.http.routers.helpdesk.tls=true"
+      - "traefik.http.services.helpdesk.loadbalancer.server.port=8024"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
+
