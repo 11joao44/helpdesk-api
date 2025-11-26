@@ -19,7 +19,7 @@ deploy:
     - sleep $((CI_JOB_RETRY_COUNT * 60))  # Delay progressivo (1 min, 2 min, 3 min...)
 
     # cria rede se não existir
-    - docker network create rpa-network || true
+    - docker network create traefik || true
 
     # normaliza nome de projeto
     - raw="${CI_PROJECT_NAME}_${CI_PIPELINE_ID}"
