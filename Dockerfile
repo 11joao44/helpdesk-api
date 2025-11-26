@@ -4,7 +4,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 ENV PYTHONUNBUFFERED=1 \
     UV_PROJECT_ENVIRONMENT="/usr/local" \
-    UV_COMPILE_BYTECODE=1
+    UV_COMPILE_BYTECODE=1 \
+    PYTHONPATH=/code 
 
 WORKDIR /code
 
@@ -16,8 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml uv.lock ./
 
-# --frozen: Garante que usa versões exatas do uv.lock (Crucial para produção)
-# --no-dev: Não instala pytest, black, etc. (Economiza espaço e segurança)
 RUN uv sync --frozen --no-dev
 
 COPY . .

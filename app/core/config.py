@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     PG_CARVALIMA_HELPDESK_DBNAME: str
     PG_BOTAPP_PASSWORD: str
     PG_BOTAPP_HOST: str
+    PG_BOTAPP_USER: str
     PG_BOTAPP_PORT: str
-    PG_BOTAPP_DBNAME: str
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
