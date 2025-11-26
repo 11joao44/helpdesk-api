@@ -7,8 +7,20 @@ services:
       - .:/code  # Sincroniza pasta local com container (Hot Reload)
     expose:
       - "8024"
-    env_file:
-      - .env.prod
+    environment:
+      - DOMAIN_NAME
+      - SUB_DOMAIN_NAME
+      - CI_PROJECT_NAME
+      - CI_SERVER_HOST
+      - CI_PROJECT_PATH
+      - CI_REGISTRY_IMAGE
+      - IMAGE_VERSION
+      - BITRIX_WEBHOOK_URL
+      - PG_CARVALIMA_HELPDESK_DBNAME
+      - PG_BOTAPP_HOST
+      - PG_BOTAPP_PASSWORD
+      - PG_BOTAPP_PORT
+      - PG_BOTAPP_USER
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.helpdesk.rule=Host(`${SUB_DOMAIN_NAME}.${DOMAIN_NAME}`)"
