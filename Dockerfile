@@ -21,6 +21,8 @@ RUN uv sync --frozen --no-dev
 
 COPY . .
 
+ENV PYTHONPATH=/code
+
 RUN useradd -m appuser && chown -R appuser /code
 USER appuser
 
