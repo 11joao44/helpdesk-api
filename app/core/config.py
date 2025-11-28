@@ -22,9 +22,6 @@ try:
         "PG_BOTAPP_PORT": getenv("PG_BOTAPP_PORT"),
         "PG_BOTAPP_USER": getenv("PG_BOTAPP_USER"),
     }
-    logger.info(f"Variavel PG_CARVALIMA_HELPDESK_DBNAME: {getenv("PG_CARVALIMA_HELPDESK_DBNAME")}")
-    logger.info(f"Variavel PG_BOTAPP_HOST: {getenv("PG_BOTAPP_HOST")}")
-    logger.info(f"Variavel BITRIX_WEBHOOK_URL: base de dados: {getenv("BITRIX_WEBHOOK_URL")}")
     DATABASE_URL = f"postgresql+asyncpg://{settings["PG_BOTAPP_USER"]}:{quote_plus(settings["PG_BOTAPP_PASSWORD"])}@{settings["PG_BOTAPP_HOST"]}:{settings["PG_BOTAPP_PORT"]}/{settings["PG_CARVALIMA_HELPDESK_DBNAME"]}"
 except Exception as e:
     logger.error(f"Erro carregando Settings (Variável de ambiente faltando?): {e}")

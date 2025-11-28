@@ -27,9 +27,17 @@ def create_app() -> FastAPI:
 
     create_routes(app)
 
+    # app/main.py (ou similar)
+
+    origins = [
+        "http://localhost:5173",      # Seu Frontend Local (Vite)
+        "http://127.0.0.1:5173",      # Alternativa local
+        "https://carvalima-helpdesk.carvalima-teste.duckdns.org:8086/" # Produção (quando subir)
+    ]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"], # Em produção trocar pelo domínio do React
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
