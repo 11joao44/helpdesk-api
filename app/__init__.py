@@ -21,13 +21,10 @@ def create_app() -> FastAPI:
         title="Carvalima Helpdesk API",
         description="API de chamados integrada ao Bitrix24",
         version="1.0.0",
-        # openapi_url=f"{settings.API_V1_STR}/openapi.json",
         lifespan=lifespan
     )
 
     create_routes(app)
-
-    # app/main.py (ou similar)
 
     origins = [
         "http://localhost:5173",

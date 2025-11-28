@@ -4,15 +4,8 @@ from app.repositories.users import UserRepository
 from app.services.users import UserService
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import session_db
-from app.core.security import require_admin, get_current_user_from_cookie
-from app.schemas.users import (
-    LoginResponse, 
-    UserRegister, 
-    UserOut, 
-    UserLogin, 
-    TokenResponse, 
-    TokenRefreshRequest
-)
+from app.core.security import  require_admin, get_current_user_from_cookie
+from app.schemas.users import (ForgotPasswordRequest, LoginResponse, ResetPasswordRequest, UserRegister, UserOut, UserLogin)
 
 router = APIRouter(prefix="/auth", tags=["users"])
 
@@ -118,3 +111,13 @@ async def refresh_token(request: Request, response: Response, service: UserServi
     )
     
     return {"message": "Token atualizado"}
+
+
+@router.post("/forgot-password", status_code=200)
+async def forgot_password(data: ForgotPasswordRequest, service: UserService = Depends(get_service)):
+    return await service.forgot_password(data)
+
+
+@router.post("/reset-password", status_code=200)
+async def reset_password(data: ResetPasswordRequest, service: UserService = Depends(get_service)):
+    return await service.reset_password(data)

@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import EmailStr
 from sqlalchemy.future import select
 from app.models.users import UserModel
-from app.schemas.users import UserSchema
+from app.schemas.users import UserDetailsSchema
 
 class UserRepository:
     def __init__(self, session: AsyncSession):
@@ -38,6 +38,11 @@ class UserRepository:
         await self.session.commit()
         await self.session.refresh(base_data)
         return base_data
+    
+    async def update_password(self, user, new_hash_password) -> None:
+        user.hashed_password = new_hash_password
+        await self.session.commit()
+        await self.session.refresh(user)
 
     async def delete(self, user: UserModel) -> None:
         await self.session.delete(user)

@@ -1,15 +1,16 @@
 from typing import Any, Dict
 from fastapi import HTTPException, status
+from app.core.security import create_reset_token
 from app.repositories.users import UserRepository
 from app.models.users import UserModel
-from app.schemas.users import UserLogin, UserOut, UserRegister
+from app.schemas.users import ResetPasswordRequest, UserLogin, UserOut, UserRegister
 from app.core.config import settings
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
-from app.core.config import logger
 from bcrypt import gensalt, hashpw, checkpw
 
 
+from app.services.send_email import send_reset_password_email
 from app.utils import not_found
 
 class UserService:
@@ -34,6 +35,7 @@ class UserService:
             email = data.email,
             hashed_password = self.hash_password(data.password),
             department = data.department,
+            filial = data.filial,
             cpf = data.cpf,
             matricula = data.matricula
         )
@@ -108,3 +110,25 @@ class UserService:
         to_encode.update({"exp": now + timedelta(minutes=expire_delta), "type": "refresh", "iat": now, "nbf": now})
 
         return jwt.encode(to_encode, settings['SECRET_KEY'], settings['ALGORITHM'])
+    
+    async def forgot_password(self, data):
+        user = await self.user_repo.get_by_email(data.email)
+        if not user: raise HTTPException(status_code=404, detail="E-mail não encontrado")
+        send_reset_password_email(user.email, create_reset_token(user.email))
+        return {"details": "E-mail de recuperação enviado."}
+
+    async def reset_password(self, data: ResetPasswordRequest):
+            try:
+                payload = jwt.decode(data.token, settings['SECRET_KEY'], algorithms=[settings['ALGORITHM']])
+                email = payload.get("sub")
+                if email is None or payload.get("type") != "reset":
+                    raise HTTPException(status_code=400, detail="Token inválido")
+            except JWTError:
+                raise HTTPException(status_code=400, detail="Token inválido ou expirado")
+
+            user = await self.user_repo.get_by_email(email)
+            if not user:
+                raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+            await self.user_repo.update_password(user, self.hash_password(data.new_password))
+            return {"details": "Senha atualizada com sucesso!"}

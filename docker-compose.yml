@@ -18,6 +18,8 @@ services:
       - PG_BOTAPP_PASSWORD
       - PG_BOTAPP_PORT
       - PG_BOTAPP_USER
+      - WEBMAIL_USUARIO
+      - WEBMAIL_SENHA
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.helpdesk.rule=Host(`${SUB_DOMAIN_NAME}.${DOMAIN_NAME}`)"

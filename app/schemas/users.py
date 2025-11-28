@@ -18,6 +18,7 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     department: str
+    filial: str
     cpf: str
     matricula: str
 
@@ -34,6 +35,8 @@ class UserOut(BaseModel):
     id: int
     full_name: str
     email: EmailStr
+    filial: str
+    department: str
     is_active: bool
     is_admin: Optional[bool] = False
     created_at: datetime
@@ -55,3 +58,10 @@ class LoginResponse(BaseModel):
 
 class TokenRefreshRequest(BaseModel):
     refresh_token: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str

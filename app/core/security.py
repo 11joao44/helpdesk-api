@@ -37,3 +37,11 @@ async def require_admin(user: UserModel = Depends(get_current_user_from_cookie))
             detail="Ação restrita a administradores."
         )
     return user
+
+from datetime import timezone, timedelta, datetime
+
+def create_reset_token(email: str):
+    expire = datetime.now(timezone.utc) + timedelta(minutes=30)
+    to_encode = {"sub": email, "exp": expire, "type": "reset"}
+    encoded_jwt = jwt.encode(to_encode, settings['SECRET_KEY'], algorithm=settings['ALGORITHM'])
+    return encoded_jwt

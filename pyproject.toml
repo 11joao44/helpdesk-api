@@ -16,4 +16,5 @@ dependencies = [
     "uvicorn>=0.38.0",
     "python-jose>=3.5.0",
     "bcrypt>=5.0.0",
+    "fastapi-mail>=1.5.8",
 ]
