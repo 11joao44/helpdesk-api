@@ -30,9 +30,9 @@ def create_app() -> FastAPI:
     # app/main.py (ou similar)
 
     origins = [
-        "http://localhost:5173",      # Seu Frontend Local (Vite)
-        "http://127.0.0.1:5173",      # Alternativa local
-        "https://carvalima-helpdesk.carvalima-teste.duckdns.org:8086/" # Produção (quando subir)
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://carvalima-helpdesk.carvalima-teste.duckdns.org:8086", 
     ]
 
     app.add_middleware(
