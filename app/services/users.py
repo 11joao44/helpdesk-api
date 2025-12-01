@@ -3,7 +3,7 @@ from fastapi import HTTPException, status
 from app.core.security import create_reset_token
 from app.repositories.users import UserRepository
 from app.models.users import UserModel
-from app.schemas.users import ResetPasswordRequest, UserLogin, UserOut, UserRegister
+from app.schemas.users import ChackAvailability, ForgotPasswordRequest, ResetPasswordRequest, UserLogin, UserOut, UserRegister
 from app.core.config import settings
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -23,12 +23,14 @@ class UserService:
         return user
     
     async def create(self, data: UserRegister) -> UserModel:
-        
+        if await self.user_repo.get_by_cpf(data.cpf):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CPF já cadastrado.")
+            
         if await self.user_repo.get_by_email(data.email):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="E-mail já cadastrado.")
         
-        if len(data.password) < 8:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Senha deve ter pelo menos 8 caracteres.")
+        if await self.user_repo.get_by_matricula(data.matricula):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Matricula já cadastrada.")
         
         user = UserModel(
             full_name = data.full_name,
@@ -61,7 +63,10 @@ class UserService:
     async def login(self, data: UserLogin) -> Dict[str, Any]:
         user = await self.user_repo.get_by_matricula(data.matricula)
 
-        if not user or not self.verify_password(data.password, user.hashed_password):
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matricula não encontrado")
+
+        if not self.verify_password(data.password, user.hashed_password):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas.")
             
         return {
@@ -111,7 +116,7 @@ class UserService:
 
         return jwt.encode(to_encode, settings['SECRET_KEY'], settings['ALGORITHM'])
     
-    async def forgot_password(self, data):
+    async def forgot_password(self, data: ForgotPasswordRequest):
         user = await self.user_repo.get_by_email(data.email)
         if not user: raise HTTPException(status_code=404, detail="E-mail não encontrado")
         send_reset_password_email(user.email, create_reset_token(user.email))
@@ -132,3 +137,18 @@ class UserService:
 
             await self.user_repo.update_password(user, self.hash_password(data.new_password))
             return {"details": "Senha atualizada com sucesso!"}
+    
+    async def chack_availability(self, data: ChackAvailability):
+        print("Dados do form: ", data)
+        if data.field == "cpf":
+            if await self.user_repo.get_by_cpf(data.value):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CPF já cadastrado.")
+            
+        if data.field == "email":
+            if await self.user_repo.get_by_email(data.value):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="E-mail já cadastrado.")
+            
+        if data.field == "matricula":
+            if await self.user_repo.get_by_matricula(data.value):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Matricula já cadastrada.")
+        

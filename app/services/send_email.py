@@ -6,7 +6,7 @@ from app.core.config import settings
 
 def send_reset_password_email(email_to: str, token: str) -> None:
     msg = EmailMessage()
-    msg["Subject"] = "Redefinição de Senha",
+    msg["Subject"] = "Redefinição de Senha"
     msg["From"] = settings["WEBMAIL_USUARIO"]
     msg["To"] = email_to
 

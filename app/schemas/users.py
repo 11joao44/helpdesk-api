@@ -65,3 +65,7 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+class ChackAvailability(BaseModel):
+    field: str
+    value: str

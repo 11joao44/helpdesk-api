@@ -5,7 +5,7 @@ from app.services.users import UserService
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import session_db
 from app.core.security import  require_admin, get_current_user_from_cookie
-from app.schemas.users import (ForgotPasswordRequest, LoginResponse, ResetPasswordRequest, UserRegister, UserOut, UserLogin)
+from app.schemas.users import (ChackAvailability, ForgotPasswordRequest, LoginResponse, ResetPasswordRequest, UserRegister, UserOut, UserLogin)
 
 router = APIRouter(prefix="/auth", tags=["users"])
 
@@ -113,11 +113,15 @@ async def refresh_token(request: Request, response: Response, service: UserServi
     return {"message": "Token atualizado"}
 
 
-@router.post("/forgot-password", status_code=200)
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
 async def forgot_password(data: ForgotPasswordRequest, service: UserService = Depends(get_service)):
     return await service.forgot_password(data)
 
 
-@router.post("/reset-password", status_code=200)
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
 async def reset_password(data: ResetPasswordRequest, service: UserService = Depends(get_service)):
     return await service.reset_password(data)
+
+@router.get("/check-availability", status_code=status.HTTP_200_OK)
+async def chack_availability(data: ChackAvailability = Depends(), service: UserService = Depends(get_service)):
+    return await service.chack_availability(data)
