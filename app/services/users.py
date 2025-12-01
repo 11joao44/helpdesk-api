@@ -139,7 +139,6 @@ class UserService:
             return {"details": "Senha atualizada com sucesso!"}
     
     async def chack_availability(self, data: ChackAvailability):
-        print("Dados do form: ", data)
         if data.field == "cpf":
             if await self.user_repo.get_by_cpf(data.value):
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CPF já cadastrado.")
