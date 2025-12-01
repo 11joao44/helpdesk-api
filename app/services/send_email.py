@@ -18,7 +18,7 @@ def send_reset_password_email(email_to: str, token: str) -> None:
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Recuperação de Senha - Finan Smart</title>
+        <title>Recuperação de Senha - Carvalima Helpdesk</title>
     </head>
     <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f8ff;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f0f8ff; padding: 40px 20px;">
@@ -32,7 +32,7 @@ def send_reset_password_email(email_to: str, token: str) -> None:
                                 <div style="width: 64px; height: 64px; background-color: rgba(255,255,255,0.15); border-radius: 16px; margin: 0 auto 16px; display: inline-block; line-height: 64px; border: 2px solid rgba(0, 204, 255, 0.4);">
                                     <span style="font-size: 32px;">🔐</span>
                                 </div>
-                                <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">Finan Smart</h1>
+                                <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">Carvalima Helpdesk</h1>
                             </td>
                         </tr>
                         
@@ -85,7 +85,7 @@ def send_reset_password_email(email_to: str, token: str) -> None:
                         <tr>
                             <td style="padding: 24px 40px 32px; text-align: center;">
                                 <p style="margin: 0 0 8px; color: #0a0a53; font-size: 13px; opacity: 0.7;">
-                                    © 2025 Finan Smart. Todos os direitos reservados.
+                                    © 2025 Carvalima. Todos os direitos reservados.
                                 </p>
                                 <p style="margin: 0; color: #666666; font-size: 12px;">
                                     Este é um e-mail automático, por favor não responda.
