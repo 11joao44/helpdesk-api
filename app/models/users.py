@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, func, text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, func, text, Text
 from app.core.database import Base, relationship
 
 class UserModel(Base):
@@ -17,4 +17,5 @@ class UserModel(Base):
     is_admin = Column(Boolean, nullable=False, server_default=text("false"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    password_reset_token = Column(Text, nullable=True)
     

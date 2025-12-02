@@ -118,8 +118,10 @@ class UserService:
     
     async def forgot_password(self, data: ForgotPasswordRequest):
         user = await self.user_repo.get_by_email(data.email)
-        if not user: raise HTTPException(status_code=404, detail="E-mail não encontrado")
-        send_reset_password_email(user.email, create_reset_token(user.email))
+        if not user: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="E-mail não encontrado")
+        token = create_reset_token(user.email)
+        await self.user_repo.set_reset_token(user, token)
+        send_reset_password_email(user.email, token)
         return {"details": "E-mail de recuperação enviado."}
 
     async def reset_password(self, data: ResetPasswordRequest):
@@ -127,13 +129,16 @@ class UserService:
                 payload = jwt.decode(data.token, settings['SECRET_KEY'], algorithms=[settings['ALGORITHM']])
                 email = payload.get("sub")
                 if email is None or payload.get("type") != "reset":
-                    raise HTTPException(status_code=400, detail="Token inválido")
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token inválido")
             except JWTError:
-                raise HTTPException(status_code=400, detail="Token inválido ou expirado")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token inválido ou expirado")
 
             user = await self.user_repo.get_by_email(email)
             if not user:
                 raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+            if user.password_reset_token != data.token:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Este link de recuperação já foi utilizado ou é inválido.")
 
             await self.user_repo.update_password(user, self.hash_password(data.new_password))
             return {"details": "Senha atualizada com sucesso!"}
