@@ -27,4 +27,4 @@ deploy:
     - export COMPOSE_PROJECT_NAME="$safe"
 
     # sobe sem derrubar execuções anteriores
-    - docker compose up --build
+    - docker compose up --build -d
