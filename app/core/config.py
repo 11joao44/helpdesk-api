@@ -23,6 +23,8 @@ try:
         "PG_BOTAPP_USER": getenv("PG_BOTAPP_USER"),
         "WEBMAIL_USUARIO": getenv("WEBMAIL_USUARIO"),
         "WEBMAIL_SENHA": getenv("WEBMAIL_SENHA"),
+        "BITRIX_WEBHOOK_TOKEN": getenv("BITRIX_WEBHOOK_TOKEN"),
+        "BITRIX_INBOUND_URL": getenv("BITRIX_INBOUND_URL"),
     }
     DATABASE_URL = f"postgresql+asyncpg://{settings["PG_BOTAPP_USER"]}:{quote_plus(settings["PG_BOTAPP_PASSWORD"])}@{settings["PG_BOTAPP_HOST"]}:{settings["PG_BOTAPP_PORT"]}/{settings["PG_CARVALIMA_HELPDESK_DBNAME"]}"
 except Exception as e:

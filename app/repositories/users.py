@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import EmailStr
 from sqlalchemy.future import select
-from app.models.users import UserModel
+from app.models import UserModel
 from app.schemas.users import UserDetailsSchema
 
 class UserRepository:

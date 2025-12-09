@@ -36,6 +36,7 @@ class UserOut(BaseModel):
     full_name: str
     email: EmailStr
     filial: str
+    matricula: str
     department: str
     is_active: bool
     is_admin: Optional[bool] = False

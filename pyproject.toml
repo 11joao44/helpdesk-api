@@ -17,4 +17,5 @@ dependencies = [
     "python-jose>=3.5.0",
     "bcrypt>=5.0.0",
     "fastapi-mail>=1.5.8",
+    "python-multipart>=0.0.20",
 ]

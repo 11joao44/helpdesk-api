@@ -1,8 +1,12 @@
 from fastapi import FastAPI
 from app.routes.users import router as router_users
+from app.routes.webhook import router as router_webhooks
+from app.routes.tickets import router as router_tickets
 
 def create_routes(app: FastAPI) -> None:
         
         @app.get('/')
-        def home(): return {"details": "Olá, FastAPI está funcionando!"}
+        def home(): return {"detail": "Olá, FastAPI está funcionando!"}
         app.include_router(router_users)
+        app.include_router(router_webhooks)
+        app.include_router(router_tickets)

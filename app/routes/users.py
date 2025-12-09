@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Response, Request
-from app.models.users import UserModel
+from app.models import UserModel
 from app.repositories.users import UserRepository
 from app.services.users import UserService
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,8 +19,8 @@ async def get():
 
 
 @router.get('/users/{user_id}', status_code=status.HTTP_200_OK, response_model=UserOut)
-async def list(user_id: int, service: UserService = Depends(get_service),  admin: UserModel = Depends(require_admin)):
-    return await service.list(user_id)
+async def get_by_id(user_id: int, service: UserService = Depends(get_service),  admin: UserModel = Depends(require_admin)):
+    return await service.get_by_id(user_id)
 
 
 @router.post('/users', status_code=status.HTTP_201_CREATED, response_model=UserOut)

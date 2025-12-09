@@ -2,7 +2,7 @@ from typing import Any, Dict
 from fastapi import HTTPException, status
 from app.core.security import create_reset_token
 from app.repositories.users import UserRepository
-from app.models.users import UserModel
+from app.models import UserModel
 from app.schemas.users import ChackAvailability, ForgotPasswordRequest, ResetPasswordRequest, UserLogin, UserOut, UserRegister
 from app.core.config import settings
 from jose import JWTError, jwt
@@ -17,7 +17,7 @@ class UserService:
     def __init__(self, user_repo: UserRepository):
         self.user_repo = user_repo
         
-    async def list(self, id: int) -> UserModel:
+    async def get_by_id(self, id: int) -> UserModel:
         user = await self.user_repo.get_by_id(id)
         not_found(user, UserModel, id)
         return user
@@ -122,7 +122,7 @@ class UserService:
         token = create_reset_token(user.email)
         await self.user_repo.set_reset_token(user, token)
         send_reset_password_email(user.email, token)
-        return {"details": "E-mail de recuperação enviado."}
+        return {"detail": "E-mail de recuperação enviado."}
 
     async def reset_password(self, data: ResetPasswordRequest):
             try:
@@ -141,7 +141,7 @@ class UserService:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Este link de recuperação já foi utilizado ou é inválido.")
 
             await self.user_repo.update_password(user, self.hash_password(data.new_password))
-            return {"details": "Senha atualizada com sucesso!"}
+            return {"detail": "Senha atualizada com sucesso!"}
     
     async def chack_availability(self, data: ChackAvailability):
         if data.field == "cpf":

@@ -35,17 +35,17 @@ async def get_current_user_id(request: Request):
         logger.error(f"Token expirado: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "Token expirado", "details": str(e)}
+            detail={"error": "Token expirado", "detail": str(e)}
         )
     except JWTError as e:
         logger.error(f"Token inválido: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "Token inválido", "details": str(e)}
+            detail={"error": "Token inválido", "detail": str(e)}
         )
     except Exception as e:
         logger.exception("Erro desconhecido ao decodificar o token.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "Erro desconhecido", "details": str(e)}
+            detail={"error": "Erro desconhecido", "detail": str(e)}
         )

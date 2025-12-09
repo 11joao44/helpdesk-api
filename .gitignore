@@ -10,3 +10,4 @@ wheels/
 .venv
 .env
 main.ipynb
+ngrok.exe

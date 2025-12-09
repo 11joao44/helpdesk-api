@@ -1,7 +1,7 @@
 from fastapi import Depends, HTTPException, status, Request
 from jose import jwt, JWTError
 from app.core.config import settings
-from app.models.users import UserModel
+from app.models import UserModel
 from app.core.database import session_db 
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.users import UserRepository
