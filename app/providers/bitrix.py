@@ -11,6 +11,7 @@ class BitrixProvider:
 
     async def create_deal(self, data: TicketCreateRequest) -> int | None:
         """Cria um Negócio (Deal) no CRM. Doc: https://apidocs.bitrix24.com/api-reference/crm/deals/crm-deal-add.html"""
+        print("Datas: ", data)
         payload = {
             "fields": {
                 # Campos Padrão (Obrigatórios/Sistema)
@@ -22,11 +23,22 @@ class BitrixProvider:
                 "OPENED": "Y",
                 "ASSIGNED_BY_ID": 5807,
                 "SOURCE_ID": "SELF",
+                "CONTACT_NAME":["João Pedro Inácio Ferreira"],
+                "CONTACT_EMAIL":["qualidade.09@carvalima.com.br"],
+                "CONTACT_PHONE":["+55-(65)-9811-2658-7"],
                 BitrixFields.DESCRIPTION: data.description,
+                BitrixFields.PROTOCOL_NUMBER: "MOCK-PROTO-999",
+                BitrixFields.CLIENT_PHONE: data.phone,
+                BitrixFields.MATRICULA_USER_ID: 5807,
+                BitrixFields.SYSTEM_TYPE_FIELD: BitrixFields.SYSTEM_TYPE_REVERSE.get(data.systemType),
+                BitrixFields.PRIORITY_FIELD: BitrixFields.PRIORITY_CATEGORY.get(data.priority),
+                BitrixFields.SERVICE_CAT_FIELD: BitrixFields.SERVICE_CAT_REVERSE.get(data.serviceCategory),
+                BitrixFields.FILIAL_FIELD: BitrixFields.FILIAL_REVERSE.get(data.filial),
+                BitrixFields.DEPARTMENT_FIELD: BitrixFields.DEPARTMENT_REVERSE.get(data.requesterDepartment),
             }
         }
 
-        # Para criar (WRITE), usamos POST para segurança dos dados
+        print("Payload: ", payload)
         result = await self._call_bitrix("crm.deal.add", json_body=payload, method="POST")
 
         if result:
