@@ -25,6 +25,12 @@ class DealModel(Base):
     last_communication_time: Mapped[Optional[str]] = mapped_column(String(19))
     close_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     begin_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    requester_department: Mapped[Optional[str]] = mapped_column(String(100), index=True)
+    assignee_department: Mapped[Optional[str]] = mapped_column(String(100), index=True)
+    service_category: Mapped[Optional[str]] = mapped_column(String(50), index=True)
+    system_type: Mapped[Optional[str]] = mapped_column(String(50), index=True)
+    priority: Mapped[Optional[str]] = mapped_column(String(50), index=True)
+    matricula: Mapped[Optional[str]] = mapped_column(String(20), index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 

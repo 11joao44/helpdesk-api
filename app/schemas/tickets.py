@@ -2,20 +2,20 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
 
 class TicketCreateRequest(BaseModel):
+    full_name: str
     title: str
     description: str
     user_id: int
     resp_id: str
-    assigneeDepartment: str
+    assignee_department: str
     email: EmailStr
     filial: str
-    name: str
     phone: str
     priority: str
     matricula: str
-    requesterDepartment: str
-    serviceCategory: str
-    systemType: str
+    requester_department: str
+    service_category: str
+    system_type: str
 
 # --- O QUE RECEBEMOS (Input) ---
 class TicketCreate(BaseModel):
@@ -31,3 +31,4 @@ class TicketCreatedResponse(BaseModel):
     id: int
     deal_id: int
     message: str = "Ticket criado com sucesso"
+    data: TicketCreateRequest

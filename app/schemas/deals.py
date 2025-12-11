@@ -3,16 +3,25 @@ from typing import List, Optional
 from datetime import datetime
 from app.schemas.activity import ActivitySchema
 
-class DealCardSchema(BaseModel):
+class DealCardCreateSchema(BaseModel):
     id: int
     deal_id: int
     title: Optional[str]
-    clean_title: Optional[str]
     description: Optional[str]
     stage_id: Optional[str]
     opened: Optional[str]
     closed: Optional[str]
     created_by_id: Optional[str]
+    requester_department: Optional[str] = None
+    assignee_department: Optional[str] = None
+    service_category: Optional[str] = None
+    system_type: Optional[str] = None
+    priority: Optional[str] = None
+    matricula: Optional[str] = None
+
+    class Config: from_attributes = True
+    
+class DealCardSchema(DealCardCreateSchema):
     modify_by_id: Optional[str]
     moved_by_id: Optional[str]
     last_activity_by_id: Optional[str]

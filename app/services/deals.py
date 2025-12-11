@@ -1,6 +1,6 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
-from app.models.deals import DealModel # ou TicketModel se já renomeou
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.deals import DealModel
 from app.providers.bitrix import BitrixProvider
 from app.repositories.deals import DealRepository
 from app.schemas.tickets import TicketCreateRequest
@@ -18,16 +18,29 @@ class DealService:
 
         print("ID do novo ticket no bitrix: ", deal_id)
 
+        print("Titulo: ", data.title)
+
+        
+ 
         new_deal = DealModel(
             deal_id=deal_id,
             user_id=data.user_id,
-            title=data.title,
+            title=f"[{datetime.now().strftime("%Y%m%d")}{deal_id}] {data.title}",
             description=data.description, 
             stage_id="C25:NEW",
+            opened="Y",
+            closed="N",
+            begin_date=datetime.now(),
+            created_by_id=data.resp_id,
+            requester_department=data.requester_department,
+            assignee_department=data.assignee_department,
+            service_category=data.service_category,
+            system_type=data.system_type,
+            priority=data.priority,
+            matricula=data.matricula,
         )
         
         self.repo.session.add(new_deal)
         await self.repo.session.commit()
         await self.repo.session.refresh(new_deal)
-        
         return new_deal

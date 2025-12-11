@@ -1,7 +1,7 @@
 import httpx
 from typing import Optional, Dict, Any
 from app.core.config import settings
-from app.core.constants import BitrixFields
+from app.core.constants import BitrixFields, BitrixValues
 from app.schemas.tickets import TicketCreateRequest
 
 class BitrixProvider:
@@ -9,40 +9,111 @@ class BitrixProvider:
         # Garanta que no seu config.py/env a URL termina sem a barra, ex: .../rest/1/token
         self.webhook_url = settings['BITRIX_INBOUND_URL'] 
 
+    async def get_or_create_contact(self, name: str, email: str, phone: str = None) -> str:
+        """
+        Lógica inteligente: 
+        1. Busca se o contato já existe pelo E-mail.
+        2. Se existir, retorna o ID dele.
+        3. Se não existir, cria e retorna o novo ID.
+        """
+        # 1. Busca
+        search_payload = {
+            "filter": {"EMAIL": email},
+            "select": ["ID"]
+        }
+        search_result = await self._call_bitrix("crm.contact.list", json_body=search_payload, method="POST")
+        
+        if search_result and len(search_result) > 0:
+            existing_id = search_result[0]['ID']
+            print(f"✅ [Bitrix] Contato encontrado: {email} (ID: {existing_id})")
+            return existing_id
+
+        # 2. Criação (se não achou)
+        print(f"🆕 [Bitrix] Criando novo contato para: {email}")
+        create_payload = {
+            "fields": {
+                "NAME": name.split()[0], # Primeiro nome
+                "LAST_NAME": " ".join(name.split()[1:]) if " " in name else "", # Resto do nome
+                "OPENED": "Y",
+                "EMAIL": [{"VALUE": email, "VALUE_TYPE": "WORK"}],
+                "PHONE": [{"VALUE": phone, "VALUE_TYPE": "WORK"}] if phone else []
+            }
+        }
+        create_result = await self._call_bitrix("crm.contact.add", json_body=create_payload, method="POST")
+        return str(create_result) if create_result else None
+
     async def create_deal(self, data: TicketCreateRequest) -> int | None:
-        """Cria um Negócio (Deal) no CRM. Doc: https://apidocs.bitrix24.com/api-reference/crm/deals/crm-deal-add.html"""
-        print("Datas: ", data)
+        """Cria o Negócio traduzindo os campos do Front para o Bitrix"""
+        
+        # 1. Busca ou Cria o Contato (Pessoa Física)
+        # Usamos full_name e email para garantir unicidade
+        contact_id = await self.get_or_create_contact(data.full_name, data.email, data.phone)
+        
+        # 2. Tradução dos Campos (Mapeamento)
+        # O Front manda "TI", o Bitrix quer "1385"
+        # O Front manda "Cuiabá", o Bitrix quer "1619"
+        
+        # IMPORTANTE: Usamos o assignee_department (Para quem é o chamado) para classificar
+        dept_id_bitrix = BitrixValues.get_id(BitrixValues.DEPARTAMENTOS, data.assignee_department)
+        
+        filial_id   = BitrixValues.get_id(BitrixValues.FILIAIS, data.filial)
+        prioridade_id = BitrixValues.get_id(BitrixValues.PRIORIDADE, data.priority)
+        sistema_id  = BitrixValues.get_id(BitrixValues.SISTEMAS, data.system_type)
+        categoria_id = BitrixValues.get_id(BitrixValues.CATEGORIA, data.service_category)
+
+        # 3. Enriquecendo a Descrição
+        # Como o Bitrix nativo não tem "Departamento de Origem", colocamos no texto
+        descricao_completa = (
+            f"{data.description}\n\n"
+            f"# Detalhes Adicionais\n"
+            f"Solicitante: {data.full_name} (Matrícula: {data.matricula})\n"
+            f"Departamento de Origem: {data.requester_department}\n"
+            f"Telefone Informado: {data.phone}"
+        )
+
+        # 4. Montando o Payload
         payload = {
             "fields": {
-                # Campos Padrão (Obrigatórios/Sistema)
                 "TITLE": data.title,
                 "TYPE_ID": "SALE",
-                "STAGE_ID": "C25:NEW",
+                "STAGE_ID": "C25:NEW", # ID da etapa "Novo" no seu funil
+                "OPENED": "Y",         # Aberto para todos
                 "CATEGORY_ID": 25,
                 "CURRENCY_ID": "BRL",
-                "OPENED": "Y",
-                "ASSIGNED_BY_ID": 5807,
                 "SOURCE_ID": "SELF",
-                "CONTACT_NAME":["João Pedro Inácio Ferreira"],
-                "CONTACT_EMAIL":["qualidade.09@carvalima.com.br"],
-                "CONTACT_PHONE":["+55-(65)-9811-2658-7"],
-                BitrixFields.DESCRIPTION: data.description,
-                BitrixFields.PROTOCOL_NUMBER: "MOCK-PROTO-999",
+                
+                # --- Vínculos ---
+                "CONTACT_ID": contact_id,
+                # Define o responsável. Se vier vazio do front, usa um padrão (ex: 6185)
+                "ASSIGNED_BY_ID": data.resp_id if data.resp_id else "6185",
+                
+                # --- Campos de Texto Simples ---
+                "COMMENTS": descricao_completa, # Descrição vai na timeline
+                BitrixFields.DESCRIPTION: data.description, # Se tiver um campo custom de texto só para o problema
                 BitrixFields.CLIENT_PHONE: data.phone,
-                BitrixFields.MATRICULA_USER_ID: 5807,
-                BitrixFields.SYSTEM_TYPE_FIELD: BitrixFields.SYSTEM_TYPE_REVERSE.get(data.systemType),
-                BitrixFields.PRIORITY_FIELD: BitrixFields.PRIORITY_CATEGORY.get(data.priority),
-                BitrixFields.SERVICE_CAT_FIELD: BitrixFields.SERVICE_CAT_REVERSE.get(data.serviceCategory),
-                BitrixFields.FILIAL_FIELD: BitrixFields.FILIAL_REVERSE.get(data.filial),
-                BitrixFields.DEPARTMENT_FIELD: BitrixFields.DEPARTMENT_REVERSE.get(data.requesterDepartment),
+                BitrixFields.PROTOCOL_NUMBER: data.matricula, # Mapeamos matricula naquele campo de texto
+                
+                # --- Campos de Lista (IDs Mapeados) ---
+                BitrixFields.DEPARTAMENTO: dept_id_bitrix, # TI, Manutenção, etc.
+                BitrixFields.FILIAL: filial_id,
+                BitrixFields.PRIORIDADE: prioridade_id,
+                BitrixFields.CATEGORIA: categoria_id,
+                
+                # BitrixFields.SISTEMA: sistema_id,
+                # Campos Booleanos/Flags (Opcional, se precisar resetar)
+                # "UF_CRM_1711044027933": "0", 
             }
         }
 
-        print("Payload: ", payload)
+        # Limpeza: Remove chaves vazias (exceto arrays vazios se necessário)
+        # Isso evita que o Bitrix reclame de IDs vazios em campos de lista
+        payload["fields"] = {k: v for k, v in payload["fields"].items() if v}
+
+        print(f"🚀 [Bitrix] Criando Deal '{data.title}' para Depto ID: {dept_id_bitrix}")
+        
         result = await self._call_bitrix("crm.deal.add", json_body=payload, method="POST")
 
         if result:
-            print(f"✅ [Provider] Deal criado com sucesso! ID: {result}")
             return int(result)
         return None
 
@@ -88,3 +159,4 @@ class BitrixProvider:
             except Exception as e:
                 print(f"❌ [Provider] Erro na chamada {endpoint}: {e}")
                 return None
+   
