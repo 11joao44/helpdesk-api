@@ -13,7 +13,6 @@ class DealModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     deal_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
     title: Mapped[Optional[str]] = mapped_column(String(255))
-    clean_title: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
     stage_id: Mapped[Optional[str]] = mapped_column(String(30), index=True)
     opened: Mapped[Optional[str]] = mapped_column(String(1), index=True)

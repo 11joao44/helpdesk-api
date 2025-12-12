@@ -28,6 +28,8 @@ class DealCardSchema(DealCardCreateSchema):
     last_communication_time: Optional[str]
     close_date: Optional[datetime]
     begin_date: Optional[datetime]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
     activities: List[ActivitySchema] = []
 
     class Config: from_attributes = True
