@@ -30,6 +30,7 @@ class DealModel(Base):
     system_type: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     priority: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     matricula: Mapped[Optional[str]] = mapped_column(String(20), index=True)
+    responsible: Mapped[Optional[str]] = mapped_column(String(30), index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
@@ -59,7 +60,6 @@ class DealModel(Base):
 #     id SERIAL PRIMARY KEY,
 #     deal_id INTEGER NOT NULL UNIQUE,
 #     title VARCHAR(255),
-#     clean_title VARCHAR(255),
 #     description TEXT,
 #     stage_id VARCHAR(15),
 #     opened VARCHAR(1),
@@ -67,6 +67,7 @@ class DealModel(Base):
 #     created_by_id VARCHAR(10),
 #     modify_by_id VARCHAR(10),
 #     moved_by_id VARCHAR(10),
+#     responsible VARCHAR(30),
 #     status_img TEXT,
 #     last_activity_by_id VARCHAR(10),
 # 	last_communication_time VARCHAR(19),

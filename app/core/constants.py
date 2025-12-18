@@ -22,6 +22,15 @@ class BitrixFields:
     CLIENT_PHONE  = "UF_CRM_617728A6C16A5" # Verificar se é este mesmo
     ARQUIVO       = "UF_CRM_1763984364"
 
+    ASSUNTO_MAP = {
+        "775":  "UF_CRM_1763551486", # Bitrix
+        "771":  "UF_CRM_1763551455", # Sacflow
+        "769":  "UF_CRM_1763551374", # SSW
+        "773":  "UF_CRM_1763551413", # Unitop
+        "1291": "UF_CRM_1763551540", # Automações
+        "1293": "UF_CRM_1763551616", # Extensão
+    }
+
 
 class BitrixValues:
     """
@@ -50,6 +59,49 @@ class BitrixValues:
         "Automações": "1291",
         "Extensão": "1293",
         "Outros": "1295"
+    }
+
+    ASSUNTO = {
+        "SSW": {
+            "Dúvidas": "1485",
+            "Acessos e Permissões":"1487",
+            "Redefinição de Senha":"1489",
+            "Integração (EDI)":"1491",
+            "Token de Acesso":"1493",
+            "Bug e Falhas":"1495",
+            "Melhorias":"1497",
+        },
+        "Unitop": {
+          "Dúvidas":"1499",
+          "Acessos e Permissões":"1501",
+          "Redefinição de Senha":"1503",
+          "Bug e Falhas":"1505",
+          "Melhorias":"1507",
+        },
+        "Sacflow": {
+            "Dúvidas":"1509",
+            "Acessos e Permissões":"1511",
+            "Redefinição de Senha":"1513",
+            "Resposta Rápida":"1515",
+            "Etiquetas":"1517",
+            "Bug e Falhas":"1519",
+            "Melhorias":"1521",
+        },
+        "Bitrix": {
+            "Dúvidas":"1523",
+            "Criação de Usuários":"1525",
+            "Bug e Falhas":"1527",
+            "Melhorias":"1529",
+        },
+        "Automações": {
+            "Desenvolvimento":"1531",
+            "Suporte à Automação":"1533",
+        },
+        "Extensão": {
+            "Dúvidas":"1543",
+            "Criação":"1545",
+            "Suporte":"1547",
+        }
     }
 
     CATEGORIA = {
@@ -148,3 +200,23 @@ class BitrixValues:
         
         print(f"⚠️ [BitrixMapper] Valor não encontrado no mapa: '{value}'")
         return ""
+    
+    @staticmethod
+    def get_subject_id(system_name: str, subject_name: str) -> str:
+        if not system_name or not subject_name: return ""
+        
+        system_key_found = None
+        if system_name in BitrixValues.ASSUNTO:
+            system_key_found = system_name
+        else:
+            s_lower = system_name.lower().strip()
+            for key in BitrixValues.ASSUNTO.keys():
+                if key.lower().strip() == s_lower:
+                    system_key_found = key
+                    break
+        
+        if not system_key_found:
+            return ""
+
+        mapa_assuntos = BitrixValues.ASSUNTO[system_key_found]
+        return BitrixValues.get_id(mapa_assuntos, subject_name)

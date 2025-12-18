@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from datetime import datetime
 from app.schemas.activity import ActivitySchema
@@ -10,7 +10,7 @@ class DealCardCreateSchema(BaseModel):
     description: Optional[str]
     stage_id: Optional[str]
     opened: Optional[str]
-    closed: Optional[str]
+    closed: Optional[bool] = None
     created_by_id: Optional[str]
     requester_department: Optional[str] = None
     assignee_department: Optional[str] = None
@@ -18,6 +18,12 @@ class DealCardCreateSchema(BaseModel):
     system_type: Optional[str] = None
     priority: Optional[str] = None
     matricula: Optional[str] = None
+    
+    @field_validator('closed', mode='before')
+    def parse_closed(cls, v):
+        if v == 'Y': return True
+        if v == 'N': return False
+        return v
 
     class Config: from_attributes = True
     
@@ -30,6 +36,7 @@ class DealCardSchema(DealCardCreateSchema):
     begin_date: Optional[datetime]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+    responsible: Optional[str] = None
     activities: List[ActivitySchema] = []
 
     class Config: from_attributes = True

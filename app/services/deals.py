@@ -3,25 +3,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.deals import DealModel
 from app.providers.bitrix import BitrixProvider
 from app.repositories.deals import DealRepository
-from app.schemas.tickets import TicketCreateRequest
+from app.schemas.tickets import TicketCloseRequest, TicketCreateRequest, TicketSendEmail
 
 class DealService:
     def __init__(self, session: AsyncSession):
         # Instanciamos o provider aqui ou recebemos via injeção
         self.repo = DealRepository(session)
-        self.bitrix = BitrixProvider() 
+        self.bitrix = BitrixProvider()
+
+    async def close_ticket(self, data: TicketCloseRequest):
+        provider = BitrixProvider()
+        
+        bitrix_success = await provider.close_deal(
+            deal_id=data.deal_id, 
+            rating=data.rating,
+            comment=data.comment
+        )
+
+        if not bitrix_success:
+             return {"status": "error", "message": "Falha ao atualizar no Bitrix"}
+        
+        return {"status": "success", "message": "Chamado encerrado com sucesso"}
+
+
+    async def send_email(self, data: TicketSendEmail):
+        return await self.bitrix.send_email(data.deal_id, data.subject, data.message, data.to_email, data.from_email)
+
 
     async def create_ticket(self, data: TicketCreateRequest) -> DealModel:
         deal_id = await self.bitrix.create_deal(data)
         
         if not deal_id: raise Exception("Falha de comunicação com Bitrix24")
 
-        print("ID do novo ticket no bitrix: ", deal_id)
-
-        print("Titulo: ", data.title)
-
-        
- 
         new_deal = DealModel(
             deal_id=deal_id,
             user_id=data.user_id,

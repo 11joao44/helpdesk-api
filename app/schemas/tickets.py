@@ -1,10 +1,11 @@
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 
 class TicketCreateRequest(BaseModel):
     full_name: str
     title: str
     description: str
+    subject: str
     user_id: int
     resp_id: str
     assignee_department: str
@@ -32,3 +33,16 @@ class TicketCreatedResponse(BaseModel):
     deal_id: int
     message: str = "Ticket criado com sucesso"
     data: TicketCreateRequest
+
+
+class TicketSendEmail(BaseModel):
+    deal_id: int
+    from_email: str
+    to_email: str
+    subject: str
+    message: str
+
+class TicketCloseRequest(BaseModel):
+    deal_id: int
+    rating: Optional[int] = None
+    comment: Optional[str] = None

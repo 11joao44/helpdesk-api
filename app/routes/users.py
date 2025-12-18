@@ -52,7 +52,7 @@ async def login(user: UserLogin, response: Response, service: UserService = Depe
     response.set_cookie(
         key="access_token", 
         value=login_data['token']['access_token'],
-        max_age=1800, # 30 min
+        max_age=604800, # 7 dias
         **cookie_params
     )
 

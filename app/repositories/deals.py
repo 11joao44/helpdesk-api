@@ -19,13 +19,37 @@ class DealRepository:
         return result.scalars().all()
 
 
-    async def get_by_deal_id(self, b_id: int) -> DealModel | None:
-        result = await self.session.execute(select(DealModel).where(DealModel.deal_id == b_id))
+    async def get_by_deal_id(self, deal_id: int) -> DealModel | None:
+        result = await self.session.execute(select(DealModel).where(DealModel.deal_id == deal_id))
         return result.scalar_one_or_none()
+    
+    async def get_deal_by_id(self, user_id: int, deal_id: int) -> Sequence[DealModel]:
+        query = (
+            select(DealModel)
+            .where(DealModel.user_id == user_id)
+            .where(DealModel.deal_id == deal_id)
+            .options(selectinload(DealModel.activities))
+            .order_by(DealModel.created_at.desc())
+        )
+        
+        result = await self.session.execute(query)
+        return result.scalars().all()
     
     async def get_deals_by_user_id(self, user_id: int) -> Sequence[DealModel]:
         query = (
             select(DealModel)
+            .where(DealModel.user_id == user_id)
+            .options(selectinload(DealModel.activities))
+            .order_by(DealModel.created_at.desc())
+        )
+        
+        result = await self.session.execute(query)
+        return result.scalars().all()
+    
+    async def get_deals_by_user_id_open(self, user_id: int) -> Sequence[DealModel]:
+        query = (
+            select(DealModel)
+            .where(DealModel.closed != "Y")
             .where(DealModel.user_id == user_id)
             .options(selectinload(DealModel.activities))
             .order_by(DealModel.created_at.desc())

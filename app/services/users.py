@@ -98,7 +98,7 @@ class UserService:
         except JWTError as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token de refresh inválido ou expirado." )
         
-    def create_access_token(self, data: dict, expire_delta: int = 30) -> str:
+    def create_access_token(self, data: dict, expire_delta: int = 10080) -> str:
         to_encode = data.copy()
         to_encode["sub"] = str(to_encode.get("sub"))
 

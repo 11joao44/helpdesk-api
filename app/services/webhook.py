@@ -1,5 +1,5 @@
 from fastapi import Request
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import ValidationError
 
 from app.repositories.activity import ActivityRepository
@@ -63,12 +63,11 @@ class WebhookService:
     async def _sync_deal(self, deal_id: int):
         raw = await self.bitrix.get_deal(deal_id)
         if not raw: return
+        responsible = await self.bitrix.get_responsible(raw.get("ASSIGNED_BY_ID"))
 
-        # Mapeamento e Upsert
         deal_data = {
             "deal_id": int(raw["ID"]),          
             "title": raw.get("TITLE"),
-            "clean_title": raw.get("TITLE"),
             "stage_id": raw.get("STAGE_ID"),
             "description": raw.get(BitrixFields.DESCRIPTION),
             "opened": raw.get("OPENED"),
@@ -81,10 +80,10 @@ class WebhookService:
             "created_at": self._parse_date(raw.get("DATE_CREATE")),
             "last_activity_by_id": raw.get("LAST_ACTIVITY_BY"),
             "last_communication_time": raw.get("LAST_COMMUNICATION_TIME"),
+            "responsible": responsible['responsible'],
         }
 
         await self.deal_repo.upsert_deal(deal_data)
-        # print(f"✅ Deal {deal_id} sincronizado com sucesso.")
 
 
     async def _sync_activity(self, activity_id: int):
@@ -134,7 +133,7 @@ class WebhookService:
             "priority": str(raw.get("PRIORITY")),
             "responsible_id": raw.get("RESPONSIBLE_ID"),
             
-            "description": raw.get("DESCRIPTION"), 
+            "description": str(raw.get("DESCRIPTION")).replace('<br/><br/>Enviado por <a href="http://www.bitrix24.com" target="_blank" >bitrix24.com</a>', ""),
             "body_html": raw.get("DESCRIPTION"),
             "description_type": str(raw.get("DESCRIPTION_TYPE")),
             
@@ -156,9 +155,10 @@ class WebhookService:
         await self.activity_repo.upsert_activity(activity_data)
         print(f"📧 Atividade {activity_id} processada.")
 
+
     def _parse_date(self, date_str: str):
         if not date_str: return None
         try:
-            return datetime.fromisoformat(date_str)
+            return datetime.fromisoformat(date_str).astimezone(timezone.utc)
         except ValueError:
             return None
