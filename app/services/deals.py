@@ -5,6 +5,7 @@ from app.providers.bitrix import BitrixProvider
 from app.repositories.deals import DealRepository
 from app.schemas.tickets import TicketCloseRequest, TicketCreateRequest, TicketSendEmail
 
+
 class DealService:
     def __init__(self, session: AsyncSession):
         # Instanciamos o provider aqui ou recebemos via injeção
@@ -13,33 +14,37 @@ class DealService:
 
     async def close_ticket(self, data: TicketCloseRequest):
         provider = BitrixProvider()
-        
+
         bitrix_success = await provider.close_deal(
-            deal_id=data.deal_id, 
-            rating=data.rating,
-            comment=data.comment
+            deal_id=data.deal_id, rating=data.rating, comment=data.comment
         )
 
         if not bitrix_success:
-             return {"status": "error", "message": "Falha ao atualizar no Bitrix"}
-        
+            return {"status": "error", "message": "Falha ao atualizar no Bitrix"}
+
         return {"status": "success", "message": "Chamado encerrado com sucesso"}
 
-
     async def send_email(self, data: TicketSendEmail):
-        return await self.bitrix.send_email(data.deal_id, data.subject, data.message, data.to_email, data.from_email)
-
+        return await self.bitrix.send_email(
+            deal_id=data.deal_id,
+            subject=data.subject,
+            message=data.message,
+            to_email=data.to_email,
+            from_email=data.from_email,
+            attachments=data.attachments,
+        )
 
     async def create_ticket(self, data: TicketCreateRequest) -> DealModel:
         deal_id = await self.bitrix.create_deal(data)
-        
-        if not deal_id: raise Exception("Falha de comunicação com Bitrix24")
+
+        if not deal_id:
+            raise Exception("Falha de comunicação com Bitrix24")
 
         new_deal = DealModel(
             deal_id=deal_id,
             user_id=data.user_id,
             title=f"[{datetime.now().strftime("%Y%m%d")}{deal_id}] {data.title}",
-            description=data.description, 
+            description=data.description,
             stage_id="C25:NEW",
             opened="Y",
             closed="N",
@@ -52,7 +57,7 @@ class DealService:
             priority=data.priority,
             matricula=data.matricula,
         )
-        
+
         self.repo.session.add(new_deal)
         await self.repo.session.commit()
         await self.repo.session.refresh(new_deal)

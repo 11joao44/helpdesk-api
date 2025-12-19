@@ -5,9 +5,12 @@ build/
 dist/
 wheels/
 *.egg-info
+collections.json
 
 # Virtual environments
 .venv
 .env
 main.ipynb
 ngrok.exe
+API_DOCS.md
+AI_INSTRUCTIONS.md

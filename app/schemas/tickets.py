@@ -1,5 +1,7 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, EmailStr, field_validator
+from re import sub as re_sub
+from typing import Optional, List, Dict
+
 
 class TicketCreateRequest(BaseModel):
     full_name: str
@@ -12,11 +14,22 @@ class TicketCreateRequest(BaseModel):
     email: EmailStr
     filial: str
     phone: str
-    priority: str
+    priority: Optional[str] = "Médio/Normal"
     matricula: str
     requester_department: str
     service_category: str
     system_type: str
+    attachments: Optional[List[Dict[str, str]]] = []
+
+    @field_validator("phone")
+    def validate_phone(cls, v):
+        nums = re_sub(r"\D", "", v)
+
+        if len(nums) in [10, 11]:
+            return f"55{nums}"
+
+        return nums
+
 
 # --- O QUE RECEBEMOS (Input) ---
 class TicketCreate(BaseModel):
@@ -25,6 +38,7 @@ class TicketCreate(BaseModel):
     stage_id: Optional[str] = "NEW"
     value: float = 0.0
     responsible_id: int = 1
+
 
 # --- O QUE DEVOLVEMOS (Output) ---
 # Usamos apenas o ID para ser simples e direto na criação
@@ -41,6 +55,8 @@ class TicketSendEmail(BaseModel):
     to_email: str
     subject: str
     message: str
+    attachments: Optional[List[Dict[str, str]]] = []
+
 
 class TicketCloseRequest(BaseModel):
     deal_id: int

@@ -5,48 +5,61 @@ from app.core.config import settings
 from app.core.constants import BitrixFields, BitrixValues
 from app.schemas.tickets import TicketCreateRequest
 
+
 class BitrixProvider:
     def __init__(self):
         # Garanta que no seu config.py/env a URL termina sem a barra, ex: .../rest/1/token
-        self.webhook_url = settings['BITRIX_INBOUND_URL'] 
+        self.webhook_url = settings["BITRIX_INBOUND_URL"]
 
-
-    async def get_or_create_contact(self, name: str, email: str, service_category: str, phone: str = None) -> str:
+    async def get_or_create_contact(
+        self, name: str, email: str, service_category: str, phone: str = None
+    ) -> str:
         """
-        Lógica inteligente: 
+        Lógica inteligente:
         1. Busca se o contato já existe pelo E-mail.
         2. Se existir, retorna o ID dele.
         3. Se não existir, cria e retorna o novo ID.
         """
-        contacts = await self._call_bitrix("crm.contact.list", json_body={"filter": {"EMAIL": email}, "select": ["ID"]}, method="POST")
+        contacts = await self._call_bitrix(
+            "crm.contact.list",
+            json_body={"filter": {"EMAIL": email}, "select": ["ID"]},
+            method="POST",
+        )
 
         if len(contacts) == 0:
             print(f"🆕 [Bitrix] Criando novo contato para: {email}")
             create_payload = {
                 "fields": {
-                    "NAME": name.split()[0], # Primeiro nome
+                    "NAME": name.split()[0],  # Primeiro nome
                     "LAST_NAME": " ".join(name.split()[1:]) if " " in name else "",
                     "OPENED": "Y",
                     "COMPANY_ID": "2" if service_category == "Interno" else "",
                     "EMAIL": [{"VALUE": email, "VALUE_TYPE": "WORK"}],
-                    "PHONE": [{"VALUE": phone, "VALUE_TYPE": "WORK"}] if phone else []
+                    "PHONE": [{"VALUE": phone, "VALUE_TYPE": "WORK"}] if phone else [],
                 }
             }
-            create_result = await self._call_bitrix("crm.contact.add", json_body=create_payload, method="POST")
+            create_result = await self._call_bitrix(
+                "crm.contact.add", json_body=create_payload, method="POST"
+            )
             return str(create_result) if create_result else None
 
-        return contacts[0]['ID']
-
+        return contacts[0]["ID"]
 
     async def create_deal(self, data: TicketCreateRequest) -> int | None:
         """Cria o Negócio traduzindo os campos do Front para o Bitrix"""
-        
-        contact_id = await self.get_or_create_contact(data.full_name, data.email, data.service_category, data.phone)
-        dept_id_bitrix = BitrixValues.get_id(BitrixValues.DEPARTAMENTOS, data.assignee_department)
-        filial_id   = BitrixValues.get_id(BitrixValues.FILIAIS, data.filial)
+
+        contact_id = await self.get_or_create_contact(
+            data.full_name, data.email, data.service_category, data.phone
+        )
+        dept_id_bitrix = BitrixValues.get_id(
+            BitrixValues.DEPARTAMENTOS, data.assignee_department
+        )
+        filial_id = BitrixValues.get_id(BitrixValues.FILIAIS, data.filial)
         prioridade_id = BitrixValues.get_id(BitrixValues.PRIORIDADE, data.priority)
-        sistema_id  = BitrixValues.get_id(BitrixValues.SISTEMAS, data.system_type)
-        categoria_id = BitrixValues.get_id(BitrixValues.CATEGORIA, data.service_category)
+        sistema_id = BitrixValues.get_id(BitrixValues.SISTEMAS, data.system_type)
+        categoria_id = BitrixValues.get_id(
+            BitrixValues.CATEGORIA, data.service_category
+        )
 
         descricao_completa = (
             f"{data.description}\n\n"
@@ -60,46 +73,77 @@ class BitrixProvider:
             "fields": {
                 "TITLE": data.title,
                 "TYPE_ID": "SALE",
-                "STAGE_ID": "C25:NEW", # ID da etapa "Novo" no seu funil
+                "STAGE_ID": "C25:NEW",  # ID da etapa "Novo" no seu funil
                 "OPENED": "Y",
                 "CATEGORY_ID": 25,
                 "CURRENCY_ID": "BRL",
                 "SOURCE_ID": "SELF",
-                
                 "CONTACT_ID": contact_id,
                 "ASSIGNED_BY_ID": data.resp_id if data.resp_id else "6185",
-                
-                "COMMENTS": descricao_completa, # Descrição vai na timeline
-                "UF_CRM_6938495549C8A": data.assignee_department,
-                BitrixFields.DESCRIPTION: data.description, # Se tiver um campo custom de texto só para o problema
+                "COMMENTS": descricao_completa,  # Descrição vai na timeline
+                "UF_CRM_6938495549C8A": data.requester_department,
+                BitrixFields.DESCRIPTION: data.description,  # Se tiver um campo custom de texto só para o problema
                 BitrixFields.CLIENT_PHONE: data.phone,
-                BitrixFields.PROTOCOL_NUMBER: data.matricula, # Mapeamos matricula naquele campo de texto
-                
+                BitrixFields.PROTOCOL_NUMBER: data.matricula,  # Mapeamos matricula naquele campo de texto
                 # --- Campos de Lista (IDs Mapeados) ---
-                BitrixFields.DEPARTAMENTO: dept_id_bitrix, # TI, Manutenção, etc.
+                BitrixFields.DEPARTAMENTO: dept_id_bitrix,  # TI, Manutenção, etc.
                 BitrixFields.FILIAL: filial_id,
                 BitrixFields.PRIORIDADE: prioridade_id,
                 BitrixFields.CATEGORIA: categoria_id,
                 BitrixFields.SISTEMA: sistema_id,
-                BitrixFields.ASSUNTO_MAP.get(sistema_id): BitrixValues.get_subject_id(data.system_type, data.subject)
+                BitrixFields.ASSUNTO_MAP.get(sistema_id): BitrixValues.get_subject_id(
+                    data.system_type, data.subject
+                ),
             }
         }
 
         payload["fields"] = {k: v for k, v in payload["fields"].items() if v}
 
-        print(f"🚀 [Bitrix] Criando Deal '{data.title}' para Depto ID: {dept_id_bitrix}")
-        
-        result = await self._call_bitrix("crm.deal.add", json_body=payload, method="POST")
+        print(
+            f"🚀 [Bitrix] Criando Deal '{data.title}' para Depto ID: {dept_id_bitrix}"
+        )
+
+        result = await self._call_bitrix(
+            "crm.deal.add", json_body=payload, method="POST"
+        )
 
         if result:
-            return int(result)
+            deal_id = int(result)
+
+            # Se houver anexos na abertura, cria um comentário com eles
+            if data.attachments:
+                await self._add_comment_with_files(deal_id, data.attachments)
+
+            return deal_id
         return None
 
+    async def _add_comment_with_files(self, deal_id: int, attachments: list):
+        """Adiciona um comentário no Deal contendo os arquivos anexados"""
+        print(
+            f"📎 [Bitrix] Anexando {len(attachments)} arquivos ao Deal {deal_id} via Timeline..."
+        )
+
+        # Formato para crm.timeline.comment.add: [["nome.ext", "base64..."], ...]
+        files_payload = []
+        for att in attachments:
+            files_payload.append([att.get("name"), att.get("content")])
+
+        payload = {
+            "fields": {
+                "ENTITY_ID": deal_id,
+                "ENTITY_TYPE": "deal",
+                "COMMENT": "Arquivos enviados durante a abertura do chamado.",
+                "FILES": files_payload,
+            }
+        }
+
+        await self._call_bitrix(
+            "crm.timeline.comment.add", json_body=payload, method="POST"
+        )
 
     async def get_deal(self, deal_id: int) -> Optional[Dict[str, Any]]:
         print(f"📡 [Provider] Buscando Deal {deal_id}...")
         return await self._call_bitrix("crm.deal.get", params={"id": deal_id})
-
 
     async def get_responsible(self, ASSIGNED_BY_ID: int) -> Optional[Dict[str, Any]]:
         print(f"📡 [Provider] Buscando Responsável ID {ASSIGNED_BY_ID}...")
@@ -112,48 +156,59 @@ class BitrixProvider:
         user = users_list[0]
 
         return {
-            "responsible_id": user['ID'], 
-            "email": user.get('EMAIL', ''),
-            "responsible": f"{user.get('NAME', '')} {user.get('LAST_NAME', '')}".strip()
+            "responsible_id": user["ID"],
+            "email": user.get("EMAIL", ""),
+            "responsible": f"{user.get('NAME', '')} {user.get('LAST_NAME', '')}".strip(),
         }
-
 
     async def get_activity(self, activity_id: int) -> Optional[Dict[str, Any]]:
         print(f"📡 [Provider] Buscando Atividade {activity_id}...")
         return await self._call_bitrix("crm.activity.get", params={"id": activity_id})
 
-
-    async def _call_bitrix(self, endpoint: str, params: Dict = None, json_body: Dict = None, method: str = "GET") -> Optional[Any]:
+    async def _call_bitrix(
+        self,
+        endpoint: str,
+        params: Dict = None,
+        json_body: Dict = None,
+        method: str = "GET",
+    ) -> Optional[Any]:
         """
         Método genérico inteligente.
         - GET: Usa 'params' (Query String) -> Bom para leituras.
         - POST: Usa 'json_body' (Corpo) -> Bom para criações/updates.
         """
         url = f"{self.webhook_url}/{endpoint}.json"
-        
+
         async with httpx.AsyncClient() as client:
             try:
                 if method == "GET":
                     response = await client.get(url, params=params, timeout=15.0)
                 else:
                     response = await client.post(url, json=json_body, timeout=15.0)
-                
-                response.raise_for_status() # Lança erro se for 400/500
+
+                response.raise_for_status()  # Lança erro se for 400/500
                 data = response.json()
                 print("Retorno da api bitrix criar ticket: ", data)
-                
+
                 if "result" in data:
                     return data["result"]
-                
+
                 print(f"⚠️ [Provider] Bitrix retornou sucesso mas sem resultado: {data}")
                 return None
-                
+
             except Exception as e:
                 print(f"❌ [Provider] Erro na chamada {endpoint}: {e}")
                 return None
-   
 
-    async def send_email(self, deal_id: int, subject: str, message: str, to_email: str, from_email: str = None) -> int | None:
+    async def send_email(
+        self,
+        deal_id: int,
+        subject: str,
+        message: str,
+        to_email: str,
+        from_email: str = None,
+        attachments: list = [],
+    ) -> int | None:
         """
         Envia um e-mail vinculado ao Deal (Ticket) para o cliente.
         endpoint: crm.activity.add
@@ -163,45 +218,60 @@ class BitrixProvider:
 
         payload = {
             "fields": {
-                "OWNER_TYPE_ID": 2, # 2 = Deal (Negócio)
-                "OWNER_ID": deal_id, # ID do Ticket/Deal
-                "TYPE_ID": 4, # 4 = E-mail
+                "OWNER_TYPE_ID": 2,  # 2 = Deal (Negócio)
+                "OWNER_ID": deal_id,  # ID do Ticket/Deal
+                "TYPE_ID": 4,  # 4 = E-mail
                 "PROVIDER_ID": "CRM_EMAIL",
                 "PROVIDER_TYPE_ID": "EMAIL",
                 "SUBJECT": subject,
                 "DESCRIPTION": message,
-                "DESCRIPTION_TYPE": 3, # 3 = HTML (permite formatação)
-                "DIRECTION": 2, # 2 = Saída (Outgoing)
+                "DESCRIPTION_TYPE": 3,  # 3 = HTML (permite formatação)
+                "DIRECTION": 2,  # 2 = Saída (Outgoing)
                 "START_TIME": now_str,
                 "END_TIME": now_str,
-                "COMPLETED": "Y", # Marca como concluído/enviado
-                "PRIORITY": 2, # 2 = Normal
-                
-                "SETTINGS": { # Configuração de Remetente e Destinatário
-                    "MESSAGE_FROM": from_email if from_email else "qualidade.09@carvalima.com.br",
+                "COMPLETED": "Y",  # Marca como concluído/enviado
+                "PRIORITY": 2,  # 2 = Normal
+                "SETTINGS": {  # Configuração de Remetente e Destinatário
+                    "MESSAGE_FROM": (
+                        from_email if from_email else "qualidade.09@carvalima.com.br"
+                    ),
                 },
-                
                 "COMMUNICATIONS": [
                     {
                         "VALUE": to_email,
-                        "ENTITY_TYPE_ID": 3, # 3 = Contact (Contato)
-                        "TYPE": "EMAIL"
+                        "ENTITY_TYPE_ID": 3,  # 3 = Contact (Contato)
+                        "TYPE": "EMAIL",
                     }
-                ]
+                ],
             }
         }
 
-        # Se você tiver arquivos para anexar, eles iriam no campo 'FILES' (requer upload prévio no disk.folder)
+        # 2. Anexar arquivos DIRETAMENTE (Direct Base64)
+        # Formato testado e aprovado: "FILES": [{"fileData": ["nome.ext", "base64..."]}]
+        if attachments:
+            files_payload = []
+            for att in attachments:
+                # att = {"name": "fatura.pdf", "content": "base64..."}
+                files_payload.append(
+                    {"fileData": [att.get("name"), att.get("content")]}
+                )
+
+            payload["fields"]["FILES"] = files_payload
+
         print(f"📧 [Bitrix] Enviando e-mail para Deal {deal_id} ({to_email})...")
-        
-        result = await self._call_bitrix("crm.activity.add", json_body=payload, method="POST")
-        
+
+        result = await self._call_bitrix(
+            "crm.activity.add", json_body=payload, method="POST"
+        )
+
         if result:
             return int(result)
-        
+
         return None
 
-    async def close_deal(self, deal_id: int, rating: int = None, comment: str = None) -> bool:
+    async def close_deal(
+        self, deal_id: int, rating: int = None, comment: str = None
+    ) -> bool:
         """
         Encerra o chamado movendo para a etapa de sucesso e salvando a avaliação.
         Endpoint: crm.deal.update
@@ -209,14 +279,20 @@ class BitrixProvider:
 
         fields = {
             "STAGE_ID": "C25:WON",
-            "COMMENTS": comment if comment else "Chamado encerrado pelo cliente via Portal."
+            "COMMENTS": (
+                comment if comment else "Chamado encerrado pelo cliente via Portal."
+            ),
         }
 
         if rating:
-            fields["UF_CRM_CSAT_RATING"] = rating 
+            fields["UF_CRM_CSAT_RATING"] = rating
 
         print(f"🏁 [Bitrix] Encerrando Deal {deal_id} com nota {rating}...")
 
-        result = await self._call_bitrix("crm.deal.update", json_body={"id": deal_id, "fields": fields}, method="POST")
+        result = await self._call_bitrix(
+            "crm.deal.update",
+            json_body={"id": deal_id, "fields": fields},
+            method="POST",
+        )
 
         return bool(result)

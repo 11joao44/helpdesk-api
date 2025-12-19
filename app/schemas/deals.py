@@ -3,13 +3,14 @@ from typing import List, Optional
 from datetime import datetime
 from app.schemas.activity import ActivitySchema
 
+
 class DealCardCreateSchema(BaseModel):
     id: int
     deal_id: int
     title: Optional[str]
     description: Optional[str]
     stage_id: Optional[str]
-    opened: Optional[str]
+    opened: Optional[bool]
     closed: Optional[bool] = None
     created_by_id: Optional[str]
     requester_department: Optional[str] = None
@@ -18,15 +19,17 @@ class DealCardCreateSchema(BaseModel):
     system_type: Optional[str] = None
     priority: Optional[str] = None
     matricula: Optional[str] = None
-    
-    @field_validator('closed', mode='before')
-    def parse_closed(cls, v):
-        if v == 'Y': return True
-        if v == 'N': return False
+
+    @field_validator("opened", "closed", mode="before")
+    def parse_boolean_fields(cls, v):
+        if isinstance(v, str):
+            return v.upper() == "Y"
         return v
 
-    class Config: from_attributes = True
-    
+    class Config:
+        from_attributes = True
+
+
 class DealCardSchema(DealCardCreateSchema):
     modify_by_id: Optional[str]
     moved_by_id: Optional[str]
@@ -39,4 +42,5 @@ class DealCardSchema(DealCardCreateSchema):
     responsible: Optional[str] = None
     activities: List[ActivitySchema] = []
 
-    class Config: from_attributes = True
+    class Config:
+        from_attributes = True
