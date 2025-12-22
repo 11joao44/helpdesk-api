@@ -11,9 +11,15 @@ class BitrixProvider:
         # Garanta que no seu config.py/env a URL termina sem a barra, ex: .../rest/1/token
         self.webhook_url = settings["BITRIX_INBOUND_URL"]
 
+        # Correção automática de protocolo se estiver faltando
+        if self.webhook_url and not self.webhook_url.startswith(
+            ("http://", "https://")
+        ):
+            self.webhook_url = f"https://{self.webhook_url}"
+
     async def get_or_create_contact(
         self, name: str, email: str, service_category: str, phone: str = None
-    ) -> str:
+    ) -> Optional[str]:
         """
         Lógica inteligente:
         1. Busca se o contato já existe pelo E-mail.
@@ -25,6 +31,13 @@ class BitrixProvider:
             json_body={"filter": {"EMAIL": email}, "select": ["ID"]},
             method="POST",
         )
+
+        # Se houve erro na API (None), não tenta processar e retorna None
+        if contacts is None:
+            print(
+                f"⚠️ [Bitrix] Falha ao buscar contato {email}. Verifique logs anteriores."
+            )
+            return None
 
         if len(contacts) == 0:
             print(f"🆕 [Bitrix] Criando novo contato para: {email}")

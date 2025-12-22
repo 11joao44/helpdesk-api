@@ -6,6 +6,7 @@ dist/
 wheels/
 *.egg-info
 collections.json
+.cursorrules
 
 # Virtual environments
 .venv
