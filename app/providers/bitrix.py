@@ -69,6 +69,13 @@ class BitrixProvider:
         contact_id = await self.get_or_create_contact(
             data.full_name, data.email, data.service_category, data.phone
         )
+
+        if not contact_id:
+            print(
+                f"❌ [Bitrix] Falha ao obter Contact ID para {data.email}. Abortando criação do Deal."
+            )
+            return None
+
         dept_id_bitrix = BitrixValues.get_id(
             BitrixValues.DEPARTAMENTOS, data.assignee_department
         )
@@ -195,6 +202,12 @@ class BitrixProvider:
         - GET: Usa 'params' (Query String) -> Bom para leituras.
         - POST: Usa 'json_body' (Corpo) -> Bom para criações/updates.
         """
+        if not self.webhook_url:
+            print(
+                f"❌ [Bitrix] Falha na chamada {endpoint}: BITRIX_INBOUND_URL não configurada."
+            )
+            return None
+
         url = f"{self.webhook_url}/{endpoint}.json"
 
         async with httpx.AsyncClient() as client:
