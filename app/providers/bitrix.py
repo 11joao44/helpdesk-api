@@ -9,7 +9,12 @@ from app.schemas.tickets import TicketCreateRequest
 class BitrixProvider:
     def __init__(self):
         # Garanta que no seu config.py/env a URL termina sem a barra, ex: .../rest/1/token
-        self.webhook_url = settings["BITRIX_INBOUND_URL"]
+        self.webhook_url = settings.get("BITRIX_INBOUND_URL")
+
+        if not self.webhook_url:
+            print(
+                "❌ [BitrixProvider] CRITICAL: BITRIX_INBOUND_URL is missing or empty in settings. API calls will fail."
+            )
 
         # Correção automática de protocolo se estiver faltando
         if self.webhook_url and not self.webhook_url.startswith(
@@ -32,10 +37,10 @@ class BitrixProvider:
             method="POST",
         )
 
-        # Se houve erro na API (None), não tenta processar e retorna None
-        if contacts is None:
+        # Se houve erro na API (None) ou retorno inválido, não tenta processar e retorna None
+        if contacts is None or not isinstance(contacts, list):
             print(
-                f"⚠️ [Bitrix] Falha ao buscar contato {email}. Verifique logs anteriores."
+                f"⚠️ [Bitrix] Falha ao buscar contato {email}. Retorno inválido ou erro na API: {type(contacts)}"
             )
             return None
 
