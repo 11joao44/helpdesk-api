@@ -29,7 +29,6 @@ try:
         "WEBMAIL_SENHA": getenv("WEBMAIL_SENHA"),
         "BITRIX_INBOUND_URL": getenv("BITRIX_INBOUND_URL"),
     }
-    print(f"URL BITRIX: {settings['BITRIX_INBOUND_URL']}")
     DATABASE_URL = f"postgresql+asyncpg://{settings["PG_BOTAPP_USER"]}:{quote_plus(settings["PG_BOTAPP_PASSWORD"])}@{settings["PG_BOTAPP_HOST"]}:{settings["PG_BOTAPP_PORT"]}/{settings["PG_CARVALIMA_HELPDESK_DBNAME"]}"
 except Exception as e:
     logger.error(f"Erro carregando Settings (Variável de ambiente faltando?): {e}")

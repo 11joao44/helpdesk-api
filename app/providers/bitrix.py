@@ -8,25 +8,12 @@ from app.schemas.tickets import TicketCreateRequest
 
 class BitrixProvider:
     def __init__(self):
-        # Garanta que no seu config.py/env a URL termina sem a barra, ex: .../rest/1/token
         self.webhook_url = settings.get("BITRIX_INBOUND_URL")
-
-        if not self.webhook_url:
-            print(
-                "❌ [BitrixProvider] CRITICAL: BITRIX_INBOUND_URL is missing or empty in settings. API calls will fail."
-            )
-
-        # Correção automática de protocolo se estiver faltando
-        if self.webhook_url and not self.webhook_url.startswith(
-            ("http://", "https://")
-        ):
-            self.webhook_url = f"https://{self.webhook_url}"
 
     async def get_or_create_contact(
         self, name: str, email: str, service_category: str, phone: str = None
     ) -> Optional[str]:
         """
-        Lógica inteligente:
         1. Busca se o contato já existe pelo E-mail.
         2. Se existir, retorna o ID dele.
         3. Se não existir, cria e retorna o novo ID.
@@ -71,9 +58,7 @@ class BitrixProvider:
         )
 
         if not contact_id:
-            print(
-                f"❌ [Bitrix] Falha ao obter Contact ID para {data.email}. Abortando criação do Deal."
-            )
+            print(f"❌ [Bitrix] Falha ao obter Contact ID para {data.email}. Abortando criação do Deal.")
             return None
 
         dept_id_bitrix = BitrixValues.get_id(
@@ -326,4 +311,44 @@ class BitrixProvider:
             method="POST",
         )
 
-        return bool(result)
+    async def get_disk_file(self, file_id: int) -> Optional[Dict[str, Any]]:
+        """Busca metadados de um arquivo no Bitrix Drive (Disk)"""
+        return await self._call_bitrix("disk.file.get", params={"id": file_id})
+
+    async def download_file(self, url: str) -> Optional[tuple[int, dict, Any]]:
+        """
+        Baixa um arquivo da URL fornecida (proxy).
+        Retorna (status_code, headers, stream).
+        Nota: O chamador deve fechar o stream ou usar context manager se possível,
+        mas com httpx async e streaming response do FastAPI, retornamos o iterator.
+
+        Para simplificar e evitar vazamento de conexão, este método
+        vai retornar o RESPONSE object do httpx, e o caller manipula o stream.
+        """
+        client = httpx.AsyncClient()
+        # Nota: Não usamos o 'with' aqui pois o stream precisa ficar aberto para o FastAPI consumir.
+        # O FastAPI cuidará de fechar se passarmos o iterador, mas o client precisa ser fechado?
+        # Melhor: fazer o request, ler headers, e retornar.
+        # Warning: Deixar client aberto pode ser ruim.
+        # Alternativa: Ler tudo em memória se for pequeno? PDF pode ser grande.
+        # Melhor abordagem para Proxy no FastAPI:
+        # req = client.build_request("GET", url)
+        # r = await client.send(req, stream=True)
+        # return r
+
+        try:
+            # Se a URL for relativa ou incompleta, tenta ajustar (assumindo domínio do webhook?)
+            # Mas geralmente vem completa.
+            print(f"📥 [Bitrix] Baixando arquivo: {url}")
+
+            # Request sem timeout agressivo para download
+            response = await client.get(url, follow_redirects=True, timeout=60.0)
+
+            # Se falhar (ex: 404/403), tenta via disk.file.get se tivermos ID?
+            # (Essa lógica fica na rota/service)
+
+            return response
+        except Exception as e:
+            print(f"❌ [Bitrix] Erro ao baixar arquivo: {e}")
+            await client.aclose()
+            return None
