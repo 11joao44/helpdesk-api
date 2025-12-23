@@ -5,6 +5,7 @@ from sqlalchemy import Integer, String, Text, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.deals import DealModel
+from app.models.activity_files import ActivityFileModel
 
 class ActivityModel(Base):
     __tablename__ = 'activities' # Nome plural correto
@@ -55,52 +56,56 @@ class ActivityModel(Base):
 
     # Relacionamento
     deal: Mapped["DealModel"] = relationship("DealModel", back_populates="activities")
+    files: Mapped[list["ActivityFileModel"]] = relationship("ActivityFileModel", back_populates="activity", cascade="all, delete-orphan")
 
 
-# CREATE TABLE activities (
-#     id SERIAL PRIMARY KEY,
+# Query para criação da tabela 
+"""
+CREATE TABLE activities (
+    id SERIAL PRIMARY KEY,
     
-#     -- IDs
-#     activity_id INTEGER NOT NULL UNIQUE,
-#     deal_id INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+    -- IDs
+    activity_id INTEGER NOT NULL UNIQUE,
+    deal_id INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
     
-#     -- Tipos
-#     owner_type_id VARCHAR(5),
-#     type_id VARCHAR(5),
-#     provider_id VARCHAR(50),
-#     provider_type_id VARCHAR(50),
+    -- Tipos
+    owner_type_id VARCHAR(5),
+    type_id VARCHAR(5),
+    provider_id VARCHAR(50),
+    provider_type_id VARCHAR(50),
     
-#     -- Detalhes (Mantive a primeira definição de 'direction')
-#     direction VARCHAR(10),    
-#     subject VARCHAR(255),
-#     priority VARCHAR(5),
+    -- Detalhes (Mantive a primeira definição de 'direction')
+    direction VARCHAR(10),    
+    subject VARCHAR(255),
+    priority VARCHAR(5),
     
-#     -- Conteúdo
-#     description TEXT,
-#     body_html TEXT,
-#     description_type VARCHAR(5),
+    -- Conteúdo
+    description TEXT,
+    body_html TEXT,
+    description_type VARCHAR(5),
     
-#     -- E-mails
-#     sender_email VARCHAR(255),
-#     from_email VARCHAR(255),
-#     to_email VARCHAR(255),    -- Aumentei para 255 (20 corta e-mails comuns)
-#     receiver_email VARCHAR(255),
+    -- E-mails
+    sender_email VARCHAR(255),
+    from_email VARCHAR(255),
+    to_email VARCHAR(255),    -- Aumentei para 255 (20 corta e-mails comuns)
+    receiver_email VARCHAR(255),
     
-#     -- Metadados
-#     responsible_id VARCHAR(20),
-#     author_id VARCHAR(20),
-#     editor_id VARCHAR(20),
-#     read_confirmed INTEGER,   -- Verifique se aqui tinha vírgula no seu código anterior
+    -- Metadados
+    responsible_id VARCHAR(20),
+    author_id VARCHAR(20),
+    editor_id VARCHAR(20),
+    read_confirmed INTEGER,   -- Verifique se aqui tinha vírgula no seu código anterior
     
-#     -- Arquivos
-#     file_id INTEGER,          -- O erro estava apontando aqui
-#     file_url TEXT,
+    -- Arquivos
+    file_id INTEGER,          -- O erro estava apontando aqui
+    file_url TEXT,
     
-#     -- Datas
-#     created_at_bitrix TIMESTAMP WITH TIME ZONE,
-#     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-# );
+    -- Datas
+    created_at_bitrix TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
-# -- Índices (Ajustados para a tabela 'activities')
-# CREATE INDEX ix_activities_deal_id ON activities (deal_id);
-# CREATE INDEX ix_activities_bitrix_id ON activities (activity_id);
+-- Índices (Ajustados para a tabela 'activities')
+CREATE INDEX ix_activities_deal_id ON activities (deal_id);
+CREATE INDEX ix_activities_bitrix_id ON activities (activity_id);
+"""

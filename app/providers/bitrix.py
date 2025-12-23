@@ -10,9 +10,7 @@ class BitrixProvider:
     def __init__(self):
         self.webhook_url = settings.get("BITRIX_INBOUND_URL")
 
-    async def get_or_create_contact(
-        self, name: str, email: str, service_category: str, phone: str = None
-    ) -> Optional[str]:
+    async def get_or_create_contact(self, name: str, email: str, service_category: str, phone: str = None) -> Optional[str]:
         """
         1. Busca se o contato já existe pelo E-mail.
         2. Se existir, retorna o ID dele.
@@ -175,15 +173,8 @@ class BitrixProvider:
         print(f"📡 [Provider] Buscando Atividade {activity_id}...")
         return await self._call_bitrix("crm.activity.get", params={"id": activity_id})
 
-    async def _call_bitrix(
-        self,
-        endpoint: str,
-        params: Dict = None,
-        json_body: Dict = None,
-        method: str = "GET",
-    ) -> Optional[Any]:
+    async def _call_bitrix(self, endpoint: str, params: Dict = None, json_body: Dict = None, method: str = "GET") -> Optional[Any]:
         """
-        Método genérico inteligente.
         - GET: Usa 'params' (Query String) -> Bom para leituras.
         - POST: Usa 'json_body' (Corpo) -> Bom para criações/updates.
         """
@@ -216,20 +207,8 @@ class BitrixProvider:
                 print(f"❌ [Provider] Erro na chamada {endpoint}: {e}")
                 return None
 
-    async def send_email(
-        self,
-        deal_id: int,
-        subject: str,
-        message: str,
-        to_email: str,
-        from_email: str = None,
-        attachments: list = [],
-    ) -> int | None:
-        """
-        Envia um e-mail vinculado ao Deal (Ticket) para o cliente.
-        endpoint: crm.activity.add
-        """
-
+    async def send_email(self, deal_id: int, subject: str, message: str, to_email: str, from_email: str = None, attachments: list = []) -> int | None:
+        """Envia um e-mail vinculado ao Deal (Ticket) para o cliente."""
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         payload = {
@@ -285,13 +264,8 @@ class BitrixProvider:
 
         return None
 
-    async def close_deal(
-        self, deal_id: int, rating: int = None, comment: str = None
-    ) -> bool:
-        """
-        Encerra o chamado movendo para a etapa de sucesso e salvando a avaliação.
-        Endpoint: crm.deal.update
-        """
+    async def close_deal(self, deal_id: int, rating: int = None, comment: str = None) -> bool:
+        """Encerra o chamado movendo para a etapa de sucesso e salvando a avaliação."""
 
         fields = {
             "STAGE_ID": "C25:WON",
@@ -314,41 +288,29 @@ class BitrixProvider:
     async def get_disk_file(self, file_id: int) -> Optional[Dict[str, Any]]:
         """Busca metadados de um arquivo no Bitrix Drive (Disk)"""
         return await self._call_bitrix("disk.file.get", params={"id": file_id})
-
-    async def download_file(self, url: str) -> Optional[tuple[int, dict, Any]]:
-        """
-        Baixa um arquivo da URL fornecida (proxy).
-        Retorna (status_code, headers, stream).
-        Nota: O chamador deve fechar o stream ou usar context manager se possível,
-        mas com httpx async e streaming response do FastAPI, retornamos o iterator.
-
-        Para simplificar e evitar vazamento de conexão, este método
-        vai retornar o RESPONSE object do httpx, e o caller manipula o stream.
-        """
-        client = httpx.AsyncClient()
-        # Nota: Não usamos o 'with' aqui pois o stream precisa ficar aberto para o FastAPI consumir.
-        # O FastAPI cuidará de fechar se passarmos o iterador, mas o client precisa ser fechado?
-        # Melhor: fazer o request, ler headers, e retornar.
-        # Warning: Deixar client aberto pode ser ruim.
-        # Alternativa: Ler tudo em memória se for pequeno? PDF pode ser grande.
-        # Melhor abordagem para Proxy no FastAPI:
-        # req = client.build_request("GET", url)
-        # r = await client.send(req, stream=True)
-        # return r
-
-        try:
-            # Se a URL for relativa ou incompleta, tenta ajustar (assumindo domínio do webhook?)
-            # Mas geralmente vem completa.
-            print(f"📥 [Bitrix] Baixando arquivo: {url}")
-
-            # Request sem timeout agressivo para download
-            response = await client.get(url, follow_redirects=True, timeout=60.0)
-
-            # Se falhar (ex: 404/403), tenta via disk.file.get se tivermos ID?
-            # (Essa lógica fica na rota/service)
-
-            return response
-        except Exception as e:
-            print(f"❌ [Bitrix] Erro ao baixar arquivo: {e}")
-            await client.aclose()
+    
+    async def download_disk_file(self, file_id: int) -> Optional[tuple[str, bytes]]:
+        """Baixa um arquivo do Bitrix Disk usando as credenciais do Webhook."""
+        meta = await self.get_disk_file(file_id)
+        
+        if not meta:
+            print(f"⚠️ [Bitrix] Metadados não achados para {file_id}. Cancelando download.")
             return None
+
+        download_url = meta.get("DOWNLOAD_URL")
+        encoded_filename = meta.get("NAME", f"{file_id}.bin")
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                print(f"📥 [Bitrix] Baixando conteúdo do arquivo ID: {file_id}...")
+                response = await client.get(download_url, timeout=60.0)
+                
+                if response.status_code != 200:
+                    print(f"❌ [Bitrix] Falha download ID {file_id}: {response.status_code} - {response.text[:200]}")
+                    return None
+                
+                return encoded_filename, response.content
+                
+            except Exception as e:
+                print(f"❌ [Bitrix] Erro no download disk: {e}")
+                return None

@@ -31,6 +31,7 @@ class DealModel(Base):
     priority: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     matricula: Mapped[Optional[str]] = mapped_column(String(20), index=True)
     responsible: Mapped[Optional[str]] = mapped_column(String(30), index=True)
+    responsible_email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 

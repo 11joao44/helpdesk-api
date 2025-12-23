@@ -56,3 +56,31 @@ class ActivityRepository:
                         setattr(activity, key, value)
                         
         return activity
+        
+    async def sync_files(self, activity_id: int, files_data: list[dict]):
+        """Sincroniza os arquivos de uma atividade (Remove antigos e insere novos - simples)"""
+        if not files_data: return
+
+        # Para simplificar, vamos inserir apenas os novos. 
+        # Numa lógica mais robusta, verificaria se já existe pelo 'bitrix_file_id'.
+        
+        # Importação aqui para evitar erros de ciclo se não tiver no topo
+        from app.models.activity_files import ActivityFileModel
+
+        # Opcional: Limpar arquivos anteriores dessa activity? 
+        # await self.session.execute(delete(ActivityFileModel).where(ActivityFileModel.activity_id == activity_id))
+        
+        for f in files_data:
+            # Verifica duplicidade simples
+            existing = await self.session.execute(
+                select(ActivityFileModel)
+                .where(ActivityFileModel.activity_id == activity_id)
+                .where(ActivityFileModel.bitrix_file_id == f["bitrix_file_id"])
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            new_file = ActivityFileModel(**f)
+            self.session.add(new_file)
+            
+        await self.session.flush()

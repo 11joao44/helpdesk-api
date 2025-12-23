@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from app.models.deals import DealModel
+from app.models import ActivityModel
 
 class DealRepository:
     def __init__(self, session: AsyncSession):
@@ -11,7 +12,7 @@ class DealRepository:
     async def get_deals_for_kanban(self):
         stmt = (
             select(DealModel)
-            .options(selectinload(DealModel.activities))
+            .options(selectinload(DealModel.activities).selectinload(ActivityModel.files))
             .order_by(DealModel.created_at.desc())
         )
         
@@ -28,7 +29,7 @@ class DealRepository:
             select(DealModel)
             .where(DealModel.user_id == user_id)
             .where(DealModel.deal_id == deal_id)
-            .options(selectinload(DealModel.activities))
+            .options(selectinload(DealModel.activities).selectinload(ActivityModel.files))
             .order_by(DealModel.created_at.desc())
         )
         
@@ -39,7 +40,7 @@ class DealRepository:
         query = (
             select(DealModel)
             .where(DealModel.user_id == user_id)
-            .options(selectinload(DealModel.activities))
+            .options(selectinload(DealModel.activities).selectinload(ActivityModel.files))
             .order_by(DealModel.created_at.desc())
         )
         
@@ -51,7 +52,7 @@ class DealRepository:
             select(DealModel)
             .where(DealModel.closed != "Y")
             .where(DealModel.user_id == user_id)
-            .options(selectinload(DealModel.activities))
+            .options(selectinload(DealModel.activities).selectinload(ActivityModel.files))
             .order_by(DealModel.created_at.desc())
         )
         

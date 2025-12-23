@@ -40,6 +40,7 @@ class DealCardSchema(DealCardCreateSchema):
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     responsible: Optional[str] = None
+    responsible_email: Optional[str] = None
     activities: List[ActivitySchema] = []
 
     class Config:

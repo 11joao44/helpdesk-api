@@ -28,6 +28,9 @@ try:
         "WEBMAIL_USUARIO": getenv("WEBMAIL_USUARIO"),
         "WEBMAIL_SENHA": getenv("WEBMAIL_SENHA"),
         "BITRIX_INBOUND_URL": getenv("BITRIX_INBOUND_URL"),
+        "MINIO_ENDPOINT": getenv("IP_SERVIDOR_NFS"),
+        "MINIO_ACCESS_KEY": getenv("MINIO_USER"),
+        "MINIO_SECRET_KEY": getenv("MINIO_SENHA"),
     }
     DATABASE_URL = f"postgresql+asyncpg://{settings["PG_BOTAPP_USER"]}:{quote_plus(settings["PG_BOTAPP_PASSWORD"])}@{settings["PG_BOTAPP_HOST"]}:{settings["PG_BOTAPP_PORT"]}/{settings["PG_CARVALIMA_HELPDESK_DBNAME"]}"
 except Exception as e:

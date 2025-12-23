@@ -3,6 +3,17 @@ from datetime import datetime
 from typing import Optional
 
 
+
+class ActivityFileSchema(BaseModel):
+    id: int
+    bitrix_file_id: Optional[int]
+    file_url: str
+    filename: Optional[str]
+    created_at: datetime
+
+    class Config: from_attributes = True    
+
+
 class ActivitySchema(BaseModel):
     id: int
     
@@ -20,7 +31,7 @@ class ActivitySchema(BaseModel):
     
     # Detalhes
     direction: Optional[str]
-    subject: Optional[str]
+    subject: Optional[str] = None
     priority: Optional[str]
     responsible_id: Optional[str]
     
@@ -40,9 +51,12 @@ class ActivitySchema(BaseModel):
     editor_id: Optional[str]
     read_confirmed: Optional[int]
     
-    # Arquivos
+    # Arquivos (Legado)
     file_id: Optional[int]
     file_url: Optional[str]
+    
+    # Arquivos (Lista)
+    files: list[ActivityFileSchema] = []
 
     # Datas
     created_at_bitrix: Optional[datetime]

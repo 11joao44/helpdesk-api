@@ -6,6 +6,7 @@ from app.repositories.deals import DealRepository
 from app.schemas.deals import DealCardCreateSchema, DealCardSchema
 from app.services.deals import DealService
 from app.schemas.tickets import TicketCloseRequest, TicketCreateRequest, TicketSendEmail
+from app.providers.storage import StorageProvider
 
 router = APIRouter(tags=["Tickets"])
 
@@ -13,11 +14,32 @@ router = APIRouter(tags=["Tickets"])
 def get_service(session: AsyncSession = Depends(session_db)):
     return DealService(session)
 
+def get_storage():
+    return StorageProvider()
+
+def _sign_deals(deals: List, storage: StorageProvider):
+    """Percorre os deals e gera links assinados para os anexos"""
+    for deal in deals:
+        for activity in deal.activities:
+            # 1. Tratamento para campo legado (file_url)
+            if activity.file_url and not activity.file_url.startswith("http"):
+                # Se não começa com http, é uma key do MinIO
+                signed_url = storage.get_presigned_url(activity.file_url)
+                if signed_url:
+                    activity.file_url = signed_url
+            
+            # 2. Tratamento para lista de arquivos (files)
+            if activity.files:
+                for f in activity.files:
+                    if f.file_url and not f.file_url.startswith("http"):
+                        signed_f_url = storage.get_presigned_url(f.file_url)
+                        if signed_f_url:
+                            f.file_url = signed_f_url
+    return deals
+
 
 @router.post("/send-email")
-async def send_email_route(
-    payload: TicketSendEmail, service: DealService = Depends(get_service)
-):  # Certifique-se que o schema está importado
+async def send_email_route(payload: TicketSendEmail, service: DealService = Depends(get_service)):
     """Cria um ticket no Bitrix e salva no banco local."""
     return await service.send_email(payload)
 
@@ -41,21 +63,21 @@ async def close_ticket_route(
 
 
 @router.get("/tickets/{user_id}", response_model=List[DealCardSchema])
-async def tickets(user_id: int, session: AsyncSession = Depends(session_db)):
+async def tickets(user_id: int, session: AsyncSession = Depends(session_db), storage: StorageProvider = Depends(get_storage)):
     repo = DealRepository(session)
     deals = await repo.get_deals_by_user_id(user_id)
-    return deals
+    return _sign_deals(deals, storage)
 
 
 @router.get("/tickets-opens/{user_id}", response_model=List[DealCardSchema])
-async def tickets(user_id: int, session: AsyncSession = Depends(session_db)):
+async def tickets(user_id: int, session: AsyncSession = Depends(session_db), storage: StorageProvider = Depends(get_storage)):
     repo = DealRepository(session)
     deals = await repo.get_deals_by_user_id_open(user_id)
-    return deals
+    return _sign_deals(deals, storage)
 
 
 @router.get("/deal/{deal_id}/{user_id}", response_model=List[DealCardSchema])
-async def deal(deal_id: int, user_id: int, session: AsyncSession = Depends(session_db)):
+async def deal(deal_id: int, user_id: int, session: AsyncSession = Depends(session_db), storage: StorageProvider = Depends(get_storage)):
     repo = DealRepository(session)
     deals = await repo.get_deal_by_id(user_id, deal_id)
-    return deals
+    return _sign_deals(deals, storage)

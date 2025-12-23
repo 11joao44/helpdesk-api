@@ -1,0 +1,89 @@
+import io
+import mimetypes
+from datetime import timedelta
+from minio import Minio
+from minio.error import S3Error
+from app.core.config import settings
+
+from urllib3 import PoolManager
+
+class StorageProvider:
+    def __init__(self):
+        # Remove protocolo caso venha na variável de ambiente (SDK espera host:port)
+        raw_endpoint = settings["MINIO_ENDPOINT"]
+        endpoint = raw_endpoint.replace("http://", "").replace("https://", "") if raw_endpoint else ""
+
+        # FALLBACK: Se o endpoint for o do usuário e não tiver porta, adiciona 8086
+        if "carvalima-teste.duckdns.org" in endpoint and ":" not in endpoint:
+            endpoint = f"{endpoint}:8086"
+            print(f"⚠️ [MinIO] Porta ausente no .env. Forçando :8086 para compatibilidade.")
+
+        print(f"🔌 [MinIO] Endpoint Configurado: '{endpoint}' (Secure=True)")
+
+        self.client = Minio(
+            endpoint=endpoint,
+            access_key=settings["MINIO_ACCESS_KEY"],
+            secret_key=settings["MINIO_SECRET_KEY"],
+            secure=True,
+            http_client=PoolManager(
+                timeout=120.0,
+                retries=3,
+                maxsize=10
+            )
+        )
+        self.bucket_name = "anexos-email-bitrix"
+        
+        try:
+            self._ensure_bucket()
+        except Exception as e:
+            print(f"⚠️ [MinIO] Não foi possível conectar ao Storage na inicialização: {e}")
+
+    def _ensure_bucket(self):
+        """Garante que o bucket existe ao iniciar."""
+        try:
+            if not self.client.bucket_exists(self.bucket_name):
+                self.client.make_bucket(self.bucket_name)
+                print(f"📦 [MinIO] Bucket '{self.bucket_name}' criado.")
+        except Exception as err:
+             print(f"⚠️ [MinIO] Erro ao verificar bucket: {err}")
+
+    def upload_file(self, file_data: bytes, filename: str) -> str | None:
+        """Faz upload de bytes para o MinIO. Retorna o 'Object Name' (Key) salvo."""
+        try:
+            content_type, _ = mimetypes.guess_type(filename)
+            if not content_type:
+                content_type = "application/octet-stream"
+
+            data_stream = io.BytesIO(file_data)
+            object_name = f"attachments/{filename}"
+
+            self.client.put_object(
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+                data=data_stream,
+                length=len(file_data),
+                content_type=content_type
+            )
+            
+            print(f"✅ [MinIO] Upload Sucesso: {object_name}")
+            return object_name
+
+        except Exception as e:
+            print(f"❌ [MinIO] Erro no upload: {e}")
+            return None
+
+    def get_presigned_url(self, object_name: str, expiration_hours: int = 2) -> str | None:
+        """Gera uma URL temporária (GET) para acessar o arquivo."""
+        if not object_name: return None
+        if object_name.startswith("http"): return object_name
+
+        try:
+            url = self.client.presigned_get_object(
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+                expires=timedelta(hours=expiration_hours)
+            )
+            return url
+        except Exception as e:
+            print(f"❌ [MinIO] Erro ao gerar presigned url: {e}")
+            return None

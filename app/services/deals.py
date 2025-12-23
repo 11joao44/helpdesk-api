@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.deals import DealModel
 from app.providers.bitrix import BitrixProvider
@@ -25,7 +25,8 @@ class DealService:
         return {"status": "success", "message": "Chamado encerrado com sucesso"}
 
     async def send_email(self, data: TicketSendEmail):
-        return await self.bitrix.send_email(
+        # 1. Envia para o Bitrix
+        activity_id = await self.bitrix.send_email(
             deal_id=data.deal_id,
             subject=data.subject,
             message=data.message,
@@ -33,6 +34,39 @@ class DealService:
             from_email=data.from_email,
             attachments=data.attachments,
         )
+
+        # 2. Se enviou com sucesso, salva no banco local imediatamente
+        if activity_id:
+            from app.repositories.activity import ActivityRepository
+            
+            # Precisamos do ID interno do Deal
+            deal = await self.repo.get_by_deal_id(data.deal_id)
+            if deal:
+                act_repo = ActivityRepository(self.repo.session)
+                
+                activity_data = {
+                    "deal_id": deal.id,
+                    "activity_id": activity_id,
+                    "owner_type_id": "2", # Deal
+                    "type_id": "4",       # Email
+                    "provider_id": "CRM_EMAIL",
+                    "provider_type_id": "EMAIL",
+                    "direction": "2",     # Outgoing
+                    "subject": data.subject,
+                    "description": data.message,
+                    "body_html": data.message,
+                    "description_type": "3", # HTML
+                    "from_email": data.from_email,
+                    "to_email": data.to_email,
+                    "sender_email": data.from_email,
+                    "receiver_email": data.to_email,
+                    "created_at_bitrix": datetime.now(timezone.utc)
+                }
+                
+                await act_repo.upsert_activity(activity_data)
+                await self.repo.session.commit()
+
+        return activity_id
 
     async def create_ticket(self, data: TicketCreateRequest) -> DealModel:
         deal_id = await self.bitrix.create_deal(data)
