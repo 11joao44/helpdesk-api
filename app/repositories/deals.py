@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from app.models.deals import DealModel
+from app.models.users import UserModel
 from app.models import ActivityModel
 
 class DealRepository:
@@ -29,7 +30,12 @@ class DealRepository:
             select(DealModel)
             .where(DealModel.user_id == user_id)
             .where(DealModel.deal_id == deal_id)
-            .options(selectinload(DealModel.activities).selectinload(ActivityModel.files))
+            .options(
+                selectinload(DealModel.user),
+                selectinload(DealModel.responsible_user_rel),
+                selectinload(DealModel.activities).selectinload(ActivityModel.files),
+                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user)
+            )
             .order_by(DealModel.created_at.desc())
         )
         
@@ -40,7 +46,12 @@ class DealRepository:
         query = (
             select(DealModel)
             .where(DealModel.user_id == user_id)
-            .options(selectinload(DealModel.activities).selectinload(ActivityModel.files))
+            .options(
+                selectinload(DealModel.user),
+                selectinload(DealModel.responsible_user_rel),
+                selectinload(DealModel.activities).selectinload(ActivityModel.files),
+                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user)
+            )
             .order_by(DealModel.created_at.desc())
         )
         
@@ -52,7 +63,12 @@ class DealRepository:
             select(DealModel)
             .where(DealModel.closed != "Y")
             .where(DealModel.user_id == user_id)
-            .options(selectinload(DealModel.activities).selectinload(ActivityModel.files))
+            .options(
+                selectinload(DealModel.user),
+                selectinload(DealModel.responsible_user_rel),
+                selectinload(DealModel.activities).selectinload(ActivityModel.files),
+                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user)
+            )
             .order_by(DealModel.created_at.desc())
         )
         

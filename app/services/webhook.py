@@ -161,6 +161,9 @@ class WebhookService:
                 if c_type and str(c_type).upper() == "EMAIL":
                     email_to = comm.get("VALUE")
                     break
+        
+        # Buscando o responsável antes de montar o objeto
+        responsible_info = await self.bitrix.get_responsible(raw.get("RESPONSIBLE_ID")) or {}
 
         # 5. Montagem do Objeto (Activity)
         activity_data = {
@@ -177,6 +180,10 @@ class WebhookService:
             "priority": str(raw.get("PRIORITY")),
             "responsible_id": raw.get("RESPONSIBLE_ID"),
             
+            # Buscando detalhes do responsável
+            "responsible_name": responsible_info.get('responsible'),
+            "responsible_email": responsible_info.get('email'),
+
             "description": str(raw.get("DESCRIPTION")).replace('<br/><br/>Enviado por <a href="http://www.bitrix24.com" target="_blank" >bitrix24.com</a>', ""),
             "body_html": raw.get("DESCRIPTION"),
             "description_type": str(raw.get("DESCRIPTION_TYPE")),

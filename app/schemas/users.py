@@ -42,6 +42,7 @@ class UserOut(BaseModel):
     is_admin: Optional[bool] = False
     created_at: datetime
     updated_at:  Optional[datetime] = None
+    profile_picture_url: Optional[str] = None
 
     model_config = ConfigDict(
         from_attributes=True,

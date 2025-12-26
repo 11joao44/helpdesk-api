@@ -12,6 +12,7 @@ class UserModel(Base):
     hashed_password = Column(String(256), nullable=False)
     department = Column(String(64), nullable=False)
     filial = Column(String(64), nullable=False)
+    profile_picture = Column(String(256), nullable=True)
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
     is_admin = Column(Boolean, nullable=False, server_default=text("false"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

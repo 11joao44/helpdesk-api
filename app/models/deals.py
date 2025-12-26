@@ -53,6 +53,14 @@ class DealModel(Base):
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     user: Mapped[Optional["UserModel"]] = relationship("app.models.users.UserModel", back_populates="deals")
 
+    # Relacionamento por e-mail para pegar foto do responsável (Virtual)
+    responsible_user_rel: Mapped[Optional["UserModel"]] = relationship(
+        "UserModel",
+        primaryjoin="foreign(DealModel.responsible_email) == UserModel.email",
+        viewonly=True,
+        overlaps="user"
+    )
+
     def __repr__(self) -> str:
         return f"<Deal(id={self.id}, title='{self.title}')>"
 

@@ -34,6 +34,9 @@ class ActivitySchema(BaseModel):
     subject: Optional[str] = None
     priority: Optional[str]
     responsible_id: Optional[str]
+    responsible_name: Optional[str]
+    responsible_email: Optional[str]
+    responsible_profile_picture_url: Optional[str] = None
     
     # Conteúdo
     description: Optional[str]

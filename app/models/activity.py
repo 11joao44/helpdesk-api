@@ -1,11 +1,12 @@
 # app/models/activities.py
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from datetime import datetime
 from sqlalchemy import Integer, String, Text, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.deals import DealModel
 from app.models.activity_files import ActivityFileModel
+if TYPE_CHECKING: from app.models.users import UserModel
 
 class ActivityModel(Base):
     __tablename__ = 'activities' # Nome plural correto
@@ -29,6 +30,8 @@ class ActivityModel(Base):
     subject: Mapped[Optional[str]] = mapped_column(String(255))
     priority: Mapped[Optional[str]] = mapped_column(String(5))
     responsible_id: Mapped[Optional[str]] = mapped_column(String(20))
+    responsible_name: Mapped[Optional[str]] = mapped_column(String(255))
+    responsible_email: Mapped[Optional[str]] = mapped_column(String(255))
     
     # Conteúdo
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -57,6 +60,13 @@ class ActivityModel(Base):
     # Relacionamento
     deal: Mapped["DealModel"] = relationship("DealModel", back_populates="activities")
     files: Mapped[list["ActivityFileModel"]] = relationship("ActivityFileModel", back_populates="activity", cascade="all, delete-orphan")
+
+    # Relacionamento por e-mail para pegar foto do responsável
+    responsible_user: Mapped[Optional["UserModel"]] = relationship(
+        "UserModel",
+        primaryjoin="foreign(ActivityModel.responsible_email) == UserModel.email",
+        viewonly=True,
+    )
 
 
 # Query para criação da tabela 
@@ -91,7 +101,10 @@ CREATE TABLE activities (
     receiver_email VARCHAR(255),
     
     -- Metadados
+    -- Metadados
     responsible_id VARCHAR(20),
+    responsible_name VARCHAR(255),
+    responsible_email VARCHAR(255),
     author_id VARCHAR(20),
     editor_id VARCHAR(20),
     read_confirmed INTEGER,   -- Verifique se aqui tinha vírgula no seu código anterior

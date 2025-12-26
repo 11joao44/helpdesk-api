@@ -60,6 +60,13 @@ class UserRepository:
         await self.session.refresh(user)
 
 
+    async def update_profile_picture(self, user: UserModel, path: str) -> None:
+        user.profile_picture = path
+        self.session.add(user)
+        await self.session.commit()
+        await self.session.refresh(user)
+
+
     async def set_reset_token(self, user: UserModel, token: str) -> None:
         user.password_reset_token = token
         self.session.add(user)

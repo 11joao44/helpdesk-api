@@ -41,6 +41,8 @@ class DealCardSchema(DealCardCreateSchema):
     updated_at: Optional[datetime]
     responsible: Optional[str] = None
     responsible_email: Optional[str] = None
+    responsible_profile_picture_url: Optional[str] = None
+    requester_profile_picture_url: Optional[str] = None
     activities: List[ActivitySchema] = []
 
     class Config:

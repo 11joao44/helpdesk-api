@@ -20,7 +20,20 @@ def get_storage():
 def _sign_deals(deals: List, storage: StorageProvider):
     """Percorre os deals e gera links assinados para os anexos"""
     for deal in deals:
+        # --- Deal Responsible Avatar ---
+        if hasattr(deal, "responsible_user_rel") and deal.responsible_user_rel and deal.responsible_user_rel.profile_picture:
+             deal.responsible_profile_picture_url = storage.get_presigned_url(deal.responsible_user_rel.profile_picture, expiration_hours=168)
+        
+        # --- Deal Requester Avatar ---
+        # Assumindo que deal.user é o solicitante/dono interno
+        if hasattr(deal, "user") and deal.user and deal.user.profile_picture:
+             deal.requester_profile_picture_url = storage.get_presigned_url(deal.user.profile_picture, expiration_hours=168)
+
         for activity in deal.activities:
+            # --- Activity Responsible Avatar ---
+            if hasattr(activity, "responsible_user") and activity.responsible_user and activity.responsible_user.profile_picture:
+                 activity.responsible_profile_picture_url = storage.get_presigned_url(activity.responsible_user.profile_picture, expiration_hours=168)
+
             # 1. Tratamento para campo legado (file_url)
             if activity.file_url and not activity.file_url.startswith("http"):
                 # Se não começa com http, é uma key do MinIO
@@ -73,6 +86,13 @@ async def tickets(user_id: int, session: AsyncSession = Depends(session_db), sto
 async def tickets(user_id: int, session: AsyncSession = Depends(session_db), storage: StorageProvider = Depends(get_storage)):
     repo = DealRepository(session)
     deals = await repo.get_deals_by_user_id_open(user_id)
+    return _sign_deals(deals, storage)
+
+
+@router.get("/tickets-responsible/{user_id}", response_model=List[DealCardSchema])
+async def tickets_responsible(user_id: int, session: AsyncSession = Depends(session_db), storage: StorageProvider = Depends(get_storage)):
+    repo = DealRepository(session)
+    deals = await repo.get_deals_by_responsible_id(user_id)
     return _sign_deals(deals, storage)
 
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Response, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Response, Request, UploadFile, File
 from app.models import UserModel
 from app.repositories.users import UserRepository
 from app.services.users import UserService
@@ -67,9 +67,13 @@ async def login(user: UserLogin, response: Response, service: UserService = Depe
     return login_data
 
 
-@router.get("/me")
-async def read_users_me(current_user = Depends(get_current_user_from_cookie)):
-    return current_user
+@router.get("/me", response_model=UserOut)
+async def read_users_me(
+    current_user: UserModel = Depends(get_current_user_from_cookie),
+    service: UserService = Depends(get_service)
+):
+    # Usa o service para preparar o UserOut, gerando a URL assinada nova
+    return service._prepare_user_out(current_user)
 
 
 @router.post('/logout', status_code=status.HTTP_200_OK)
@@ -125,3 +129,12 @@ async def reset_password(data: ResetPasswordRequest, service: UserService = Depe
 @router.get("/check-availability", status_code=status.HTTP_200_OK)
 async def chack_availability(data: ChackAvailability = Depends(), service: UserService = Depends(get_service)):
     return await service.chack_availability(data)
+
+@router.post('/users/avatar', status_code=status.HTTP_200_OK, response_model=UserOut)
+async def upload_avatar(
+    file: UploadFile = File(...), 
+    service: UserService = Depends(get_service),
+    current_user: UserModel = Depends(get_current_user_from_cookie)
+):
+    # O método receive o user_id e a imagem
+    return await service.upload_profile_picture(current_user.id, file)

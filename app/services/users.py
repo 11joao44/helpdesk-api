@@ -1,5 +1,5 @@
 from typing import Any, Dict
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, UploadFile
 from app.core.security import create_reset_token
 from app.repositories.users import UserRepository
 from app.models import UserModel
@@ -12,15 +12,23 @@ from bcrypt import gensalt, hashpw, checkpw
 
 from app.services.send_email import send_reset_password_email
 from app.utils import not_found
+from app.providers.storage import StorageProvider
 
 class UserService:
     def __init__(self, user_repo: UserRepository):
         self.user_repo = user_repo
+        self.storage = StorageProvider()
         
-    async def get_by_id(self, id: int) -> UserModel:
+    async def get_by_id(self, id: int) -> UserOut:
         user = await self.user_repo.get_by_id(id)
         not_found(user, UserModel, id)
-        return user
+        
+        # Populate avatar URL
+        user_out = UserOut.model_validate(user)
+        if user.profile_picture:
+             user_out.profile_picture_url = self.storage.get_presigned_url(user.profile_picture)
+             
+        return user_out
     
     async def create(self, data: UserRegister) -> UserModel:
         if await self.user_repo.get_by_cpf(data.cpf):
@@ -75,8 +83,38 @@ class UserService:
                 "refresh_token": self.create_refresh_token({"sub": user.id}),
                 "token_type": "bearer",
             },
-            "user": UserOut.model_validate(user)
+            "user": self._prepare_user_out(user)
         }
+        
+    def _prepare_user_out(self, user: UserModel) -> UserOut:
+        user_out = UserOut.model_validate(user)
+        if user.profile_picture:
+            # 7 dias = 168 horas
+            user_out.profile_picture_url = self.storage.get_presigned_url(user.profile_picture, expiration_hours=168)
+        return user_out
+
+    async def upload_profile_picture(self, user_id: int, file: UploadFile) -> UserOut:
+        user = await self.user_repo.get_by_id(user_id)
+        not_found(user, UserModel, user_id)
+
+        # 1. Prepare filename
+        # Use simple extension extraction
+        filename = file.filename or ""
+        ext = filename.split(".")[-1] if "." in filename else "jpg"
+        object_name_candidate = f"users/{user_id}/profile.{ext}"
+
+        # 2. Upload
+        content = await file.read()
+        saved_object_name = self.storage.upload_file(content, object_name_candidate)
+        
+        if not saved_object_name:
+             raise HTTPException(status_code=500, detail="Falha ao salvar imagem no storage.")
+
+        # 3. Save to DB
+        await self.user_repo.update_profile_picture(user, saved_object_name)
+        
+        # 4. Return updated user with URL
+        return self._prepare_user_out(user)
 
     async def refresh_token(self, refresh_token: str) -> str:
         try:
