@@ -32,6 +32,9 @@ class DealModel(Base):
     matricula: Mapped[Optional[str]] = mapped_column(String(20), index=True)
     responsible: Mapped[Optional[str]] = mapped_column(String(30), index=True)
     responsible_email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    
+    # New Foreign Key
+    responsible_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
@@ -51,14 +54,13 @@ class DealModel(Base):
     )
 
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    user: Mapped[Optional["UserModel"]] = relationship("app.models.users.UserModel", back_populates="deals")
+    user: Mapped[Optional["UserModel"]] = relationship("app.models.users.UserModel", back_populates="deals", foreign_keys=[user_id])
 
-    # Relacionamento por e-mail para pegar foto do responsável (Virtual)
+    # Relacionamento FK Real
     responsible_user_rel: Mapped[Optional["UserModel"]] = relationship(
         "UserModel",
-        primaryjoin="foreign(DealModel.responsible_email) == UserModel.email",
-        viewonly=True,
-        overlaps="user"
+        foreign_keys=[responsible_id],
+        lazy="selectin"
     )
 
     def __repr__(self) -> str:

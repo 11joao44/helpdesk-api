@@ -19,5 +19,5 @@ class UserModel(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     password_reset_token = Column(Text, nullable=True)
 
-    deals = relationship("DealModel", back_populates="user")
+    deals = relationship("DealModel", back_populates="user", foreign_keys="DealModel.user_id")
     

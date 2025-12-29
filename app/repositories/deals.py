@@ -84,17 +84,51 @@ class DealRepository:
 
     async def upsert_deal(self, data: dict) -> DealModel:
         deal = await self.get_by_deal_id(data["deal_id"])
+
+        responsible_email = data.get("responsible_email")
+        responsible_id = None
         
+        if responsible_email:
+            # Busca o usuário pelo e-mail para pegar o ID
+            result = await self.session.execute(select(UserModel).where(UserModel.email == responsible_email))
+            user = result.scalar_one_or_none()
+            if user:
+                responsible_id = user.id
+
         if deal:
             # Atualiza campos existentes dinamicamente
             for key, value in data.items():
                 if hasattr(deal, key):
                     setattr(deal, key, value)
+            
+            # Atualiza o responsible_id se encontrado
+            if responsible_id:
+                deal.responsible_id = responsible_id
+
         else:
             # Cria novo
+            if responsible_id:
+                data["responsible_id"] = responsible_id
+            
             deal = DealModel(**data)
             self.session.add(deal)
             
         await self.session.flush() # Gera o ID sem fechar a transação
         return deal
+
+    async def get_deals_by_responsible_id(self, user_id: int) -> Sequence[DealModel]:
+        query = (
+            select(DealModel)
+            .where(DealModel.responsible_id == user_id)
+            .options(
+                selectinload(DealModel.user),
+                selectinload(DealModel.responsible_user_rel),
+                selectinload(DealModel.activities).selectinload(ActivityModel.files),
+                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user)
+            )
+            .order_by(DealModel.created_at.desc())
+        )
+        
+        result = await self.session.execute(query)
+        return result.scalars().all()
 

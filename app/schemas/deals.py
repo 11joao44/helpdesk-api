@@ -2,6 +2,8 @@ from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from datetime import datetime
 from app.schemas.activity import ActivitySchema
+from app.schemas.users import UserOut
+from pydantic import Field, model_validator
 
 
 class DealCardCreateSchema(BaseModel):
@@ -39,11 +41,38 @@ class DealCardSchema(DealCardCreateSchema):
     begin_date: Optional[datetime]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+    
+    # Campos que retornam para o front (mantendo contrato)
+    # Campos que retornam para o front (mantendo contrato)
     responsible: Optional[str] = None
     responsible_email: Optional[str] = None
     responsible_profile_picture_url: Optional[str] = None
+    
+    requester_name: Optional[str] = None
     requester_profile_picture_url: Optional[str] = None
     activities: List[ActivitySchema] = []
+
+    # Campo oculto para carregar dados do relacionamento (não vai para o JSON final)
+    responsible_user_rel: Optional[UserOut] = Field(default=None, exclude=True)
+    user: Optional[UserOut] = Field(default=None, exclude=True)
+
+    @model_validator(mode='after')
+    def fill_computed_details(self):
+        # 1. Preenche dados do responsável (Legacy Support)
+        if not self.responsible and self.responsible_user_rel:
+            self.responsible = self.responsible_user_rel.full_name
+            
+        if not self.responsible_email and self.responsible_user_rel:
+            self.responsible_email = self.responsible_user_rel.email
+            
+        if not self.matricula and self.responsible_user_rel:
+             self.matricula = self.responsible_user_rel.matricula
+
+        # 2. Preenche nome do solicitante
+        if not self.requester_name and self.user:
+            self.requester_name = self.user.full_name
+             
+        return self
 
     class Config:
         from_attributes = True
