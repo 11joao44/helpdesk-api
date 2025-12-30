@@ -64,5 +64,12 @@ class ActivitySchema(BaseModel):
     # Datas
     created_at_bitrix: Optional[datetime]
     created_at: datetime
+    
+    # Campo computado para o frontend validar ID do Bitrix
+    @property
+    def bitrix_deal_id(self) -> Optional[int]:
+        if hasattr(self, "deal") and self.deal:
+             return self.deal.deal_id
+        return None
 
     class Config: from_attributes = True

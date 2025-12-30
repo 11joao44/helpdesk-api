@@ -66,6 +66,35 @@ class DealService:
                 await act_repo.upsert_activity(activity_data)
                 await self.repo.session.commit()
 
+                # --- Real-time Broadcast ---
+                try:
+                    from app.providers.websocket import manager
+                    # Buscamos do banco para garantir que venha com relacionamentos carregados (eager load)
+                    # O método get_by_activity_id agora faz selectinload de files
+                    saved_activity = await act_repo.get_by_activity_id(activity_id)
+                    
+                    if saved_activity:
+                        from app.schemas.activity import ActivitySchema
+                        activity_schema = ActivitySchema.model_validate(saved_activity)
+                        
+                        print(f"📡 Tentando broadcasting (SendEmail) para Deal {deal.id} (Internal) e {data.deal_id} (Bitrix)...")
+                        
+                        # Broadcast interno
+                        await manager.broadcast(
+                            message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
+                            deal_id=str(deal.id)
+                        )
+                        
+                        # Broadcast externo (Bitrix ID)
+                        await manager.broadcast(
+                            message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
+                            deal_id=str(data.deal_id)
+                        )
+                        
+                        print("✅ Broadcast (SendEmail) executado com sucesso.")
+                except Exception as e:
+                    print(f"⚠️ Erro ao transmitir WebSocket (SendEmail): {e}")
+
         return activity_id
 
     async def create_ticket(self, data: TicketCreateRequest) -> DealModel:

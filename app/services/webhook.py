@@ -66,10 +66,6 @@ class WebhookService:
         raw = await self.bitrix.get_deal(deal_id)
         if not raw: return
         responsible = await self.bitrix.get_responsible(raw.get("ASSIGNED_BY_ID"))
-        print("="*50)
-        print(responsible['responsible'])
-        print(responsible['email'])
-        print("="*50)
 
         deal_data = {
             "deal_id": int(raw["ID"]),          
@@ -96,10 +92,6 @@ class WebhookService:
     async def _sync_activity(self, activity_id: int):
         raw = await self.bitrix.get_activity(activity_id)
         if not raw: return
-
-        print(f"DEBUG BITRIX ACTIVITY {activity_id}: {raw}")
-        print(f"SETTINGS keys: {raw.get('SETTINGS', {}).keys()}")
-
 
         # 1. Valida se é Deal (Type 2)
         if str(raw.get("OWNER_TYPE_ID")) != "2": 
@@ -151,12 +143,8 @@ class WebhookService:
                 comm_list = communications
             elif isinstance(communications, dict):
                 comm_list = list(communications.values())
-
-            print(f"DEBUG COMMUNICATIONS ({type(communications)}): {comm_list}")
-
-            # Pega o primeiro que for do tipo EMAIL
+            
             for comm in comm_list:
-                # Bitrix pode retornar TYPE="EMAIL" ou type="EMAIL"
                 c_type = comm.get("TYPE") or comm.get("type")
                 if c_type and str(c_type).upper() == "EMAIL":
                     email_to = comm.get("VALUE")
@@ -227,10 +215,7 @@ class WebhookService:
              
              file_id = f.get("id")
              if not file_id: continue
-
-             print(f"📎 Processando anexo ID {file_id}...")
              
-             # Agora retorna tupla (url, filename_correto)
              result_process = await self._process_attachment(f)
              
              if result_process:
@@ -252,6 +237,36 @@ class WebhookService:
              self.activity_repo.session.add(activity)
 
         print(f"📧 Atividade {activity_id} processada com {len(processed_files)} anexos.")
+
+        # --- 7. Real-time Broadcast ---
+        try:
+            from app.providers.websocket import manager
+            
+            saved_activity = await self.activity_repo.get_by_activity_id(activity.activity_id)
+            
+            if saved_activity:
+                from app.schemas.activity import ActivitySchema
+                activity_schema = ActivitySchema.model_validate(saved_activity)
+                
+                # Hack rápido para serializar datetime -> str (json)
+                print(f"📡 Tentando broadcasting para Deal {internal_deal_id} (Internal) e {bitrix_deal_id} (Bitrix)...")
+                
+                # Broadcast para ambos IDs para garantir compatibilidade
+                await manager.broadcast(
+                    message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
+                    deal_id=str(internal_deal_id)
+                )
+                
+                await manager.broadcast(
+                     message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
+                     deal_id=str(bitrix_deal_id)
+                )
+
+                print(f"✅ Broadcast executado.")
+        except Exception as e:
+            print(f"⚠️ Erro ao transmitir WebSocket: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 

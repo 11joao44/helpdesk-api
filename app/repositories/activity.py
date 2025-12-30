@@ -9,7 +9,12 @@ class ActivityRepository:
 
 
     async def get_by_activity_id(self, b_id: int) -> ActivityModel | None:
-        result = await self.session.execute(select(ActivityModel).where(ActivityModel.activity_id == b_id))
+        from sqlalchemy.orm import selectinload
+        result = await self.session.execute(
+            select(ActivityModel)
+            .options(selectinload(ActivityModel.files), selectinload(ActivityModel.deal))
+            .where(ActivityModel.activity_id == b_id)
+        )
         return result.scalar_one_or_none()
 
 
