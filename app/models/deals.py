@@ -32,6 +32,7 @@ class DealModel(Base):
     matricula: Mapped[Optional[str]] = mapped_column(String(20), index=True)
     responsible: Mapped[Optional[str]] = mapped_column(String(30), index=True)
     responsible_email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    requester_email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     
     # New Foreign Key
     responsible_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
@@ -86,4 +87,5 @@ class DealModel(Base):
 #     begin_date TIMESTAMP WITH TIME ZONE,
 #     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 #     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+#     requester_email VARCHAR(255),
 # );

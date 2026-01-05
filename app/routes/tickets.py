@@ -93,6 +93,7 @@ async def tickets(user_id: int, session: AsyncSession = Depends(session_db), sto
 async def tickets_responsible(user_id: int, session: AsyncSession = Depends(session_db), storage: StorageProvider = Depends(get_storage)):
     repo = DealRepository(session)
     deals = await repo.get_deals_by_responsible_id(user_id)
+    print("deals: ", deals)
     return _sign_deals(deals, storage)
 
 

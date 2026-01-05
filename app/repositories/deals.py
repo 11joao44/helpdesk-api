@@ -22,7 +22,14 @@ class DealRepository:
 
 
     async def get_by_deal_id(self, deal_id: int) -> DealModel | None:
-        result = await self.session.execute(select(DealModel).where(DealModel.deal_id == deal_id))
+        result = await self.session.execute(
+            select(DealModel)
+            .where(DealModel.deal_id == deal_id)
+            .options(
+                selectinload(DealModel.user),
+                selectinload(DealModel.responsible_user_rel),
+            )
+        )
         return result.scalar_one_or_none()
     
     async def get_deal_by_id(self, user_id: int, deal_id: int) -> Sequence[DealModel]:
@@ -120,6 +127,7 @@ class DealRepository:
         query = (
             select(DealModel)
             .where(DealModel.responsible_id == user_id)
+            .where(DealModel.closed != "Y")
             .options(
                 selectinload(DealModel.user),
                 selectinload(DealModel.responsible_user_rel),

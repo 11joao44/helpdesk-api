@@ -60,6 +60,7 @@ class DealService:
                     "to_email": data.to_email,
                     "sender_email": data.from_email,
                     "receiver_email": data.to_email,
+                    "receiver_email": data.to_email,
                     "created_at_bitrix": datetime.now(timezone.utc)
                 }
                 
@@ -74,11 +75,50 @@ class DealService:
                     saved_activity = await act_repo.get_by_activity_id(activity_id)
                     
                     if saved_activity:
-                        from app.schemas.activity import ActivitySchema
+                        from app.schemas.activity import ActivitySchema, ActivityFileSchema
                         activity_schema = ActivitySchema.model_validate(saved_activity)
                         
-                        print(f"📡 Tentando broadcasting (SendEmail) para Deal {deal.id} (Internal) e {data.deal_id} (Bitrix)...")
+                        # --- 1. Injetar Imagens de Perfil (Responsável e Solicitante) ---
+                        from app.providers.storage import StorageProvider
+                        storage = StorageProvider()
                         
+                        # Foto do Responsável pelo Deal
+                        if deal.responsible_user_rel and deal.responsible_user_rel.profile_picture:
+                             activity_schema.responsible_profile_picture_url = storage.get_presigned_url(
+                                 deal.responsible_user_rel.profile_picture, 
+                                 expiration_hours=168
+                             )
+
+                        # --- 2. Injetar Anexos (Base64 para Data URI) ---
+                        # O saved_activity ainda não tem arquivos (pois o webhook não rodou).
+                        # Vamos injetar manualmente para o front ter feedback imediato.
+                        if data.attachments:
+                            temp_files = []
+                            for idx, att in enumerate(data.attachments):
+                                # att = {"name": "foo.png", "content": "base64String..."}
+                                b64_content = att.get("content", "")
+                                filename = att.get("name", f"file_{idx}")
+                                
+                                # Detectar mime type básico (opcional, ou genérico)
+                                mime = "application/octet-stream"
+                                if filename.lower().endswith(".png"): mime = "image/png"
+                                elif filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"): mime = "image/jpeg"
+                                elif filename.lower().endswith(".pdf"): mime = "application/pdf"
+                                
+                                # Montar Data URI
+                                data_uri = f"data:{mime};base64,{b64_content}"
+                                
+                                temp_file = ActivityFileSchema(
+                                    id=0, # ID temporário
+                                    bitrix_file_id=0,
+                                    file_url=data_uri,
+                                    filename=filename,
+                                    created_at=datetime.now(timezone.utc)
+                                )
+                                temp_files.append(temp_file)
+                            
+                            activity_schema.files = temp_files
+
                         # Broadcast interno
                         await manager.broadcast(
                             message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
@@ -90,8 +130,6 @@ class DealService:
                             message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
                             deal_id=str(data.deal_id)
                         )
-                        
-                        print("✅ Broadcast (SendEmail) executado com sucesso.")
                 except Exception as e:
                     print(f"⚠️ Erro ao transmitir WebSocket (SendEmail): {e}")
 
