@@ -20,6 +20,7 @@ services:
       - PG_BOTAPP_USER
       - WEBMAIL_USUARIO
       - WEBMAIL_SENHA
+      - IP_SERVIDOR_NFS
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.helpdesk.rule=Host(`${SUB_DOMAIN_NAME}.${DOMAIN_NAME}`)"

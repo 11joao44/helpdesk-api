@@ -18,6 +18,16 @@ class StorageProvider:
             endpoint = f"{endpoint}:8086"
             print(f"⚠️ [MinIO] Porta ausente no .env. Forçando :8086 para compatibilidade.")
 
+        if not endpoint:
+            # Se não houver endpoint, o MinIO gera URLs quebradas tipo https:///bucket...
+            # Verifica se foi uma falha de configuração
+            if not raw_endpoint:
+                 error_msg = "❌ [MinIO] A variável de ambiente IP_SERVIDOR_NFS (ou MINIO_ENDPOINT) não está definida ou está vazia."
+                 print(error_msg)
+                 # Podemos levantar erro ou usar um fallback seguro (mas o fallback ideal depende do ambiente)
+                 # Vamos levantar erro para forçar correção
+                 raise ValueError(error_msg)
+        
         print(f"🔌 [MinIO] Endpoint Configurado: '{endpoint}' (Secure=True)")
 
         self.client = Minio(
