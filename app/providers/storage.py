@@ -1,5 +1,6 @@
 import io
 import mimetypes
+from urllib.parse import urlparse
 from datetime import timedelta
 from minio import Minio
 from minio.error import S3Error
@@ -28,6 +29,8 @@ class StorageProvider:
                  # Vamos levantar erro para forçar correção
                  raise ValueError(error_msg)
         
+
+        self.endpoint = endpoint
         print(f"🔌 [MinIO] Endpoint Configurado: '{endpoint}' (Secure=True)")
 
         self.client = Minio(
@@ -85,7 +88,34 @@ class StorageProvider:
     def get_presigned_url(self, object_name: str, expiration_hours: int = 2) -> str | None:
         """Gera uma URL temporária (GET) para acessar o arquivo."""
         if not object_name: return None
-        if object_name.startswith("http"): return object_name
+        
+        # Se for URL completa, tenta extrair a chave (path) relativa
+        if object_name.startswith("http"):
+             # Extrai componentes da URL
+             parsed = urlparse(object_name)
+             path_parts = parsed.path.lstrip('/').split('/', 1)
+             
+             # Verifica se identificamos nosso bucket na URL (Host ou Path)
+             # Casos:
+             # 1. Host da URL bate com o Endpoint configurado (self.endpoint)
+             # 2. Caminho da URL começa com o nome do bucket (self.bucket_name) - útil se host for diferente (IP vs Domain)
+             is_my_bucket = False
+             
+             if self.endpoint in object_name:
+                 is_my_bucket = True
+             elif len(path_parts) > 1 and path_parts[0] == self.bucket_name:
+                 is_my_bucket = True
+                 
+             if is_my_bucket:
+                 # Se confirmou ser nosso bucket, tenta extrair o object_name real
+                 if len(path_parts) > 1 and path_parts[0] == self.bucket_name:
+                     object_name = path_parts[1] # folder/file.jpg
+                 else:
+                     # Fallback estranho (host bateu, mas path não tem bucket?), retorna original
+                     return object_name
+             else:
+                 # Se for URL externa (ex: google user photo) e não bateu bucket/host, retorna como está
+                 return object_name
 
         try:
             url = self.client.presigned_get_object(
