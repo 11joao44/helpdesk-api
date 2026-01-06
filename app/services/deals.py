@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.deals import DealModel
 from app.providers.bitrix import BitrixProvider
@@ -135,16 +136,28 @@ class DealService:
 
         return activity_id
 
+
     async def create_ticket(self, data: TicketCreateRequest) -> DealModel:
         deal_id = await self.bitrix.create_deal(data)
 
         if not deal_id:
             raise Exception("Falha de comunicação com Bitrix24")
-
+        
+        # Tenta buscar primeiro para evitar erro se o webhook já criou
+        existing_deal = await self.repo.get_by_deal_id(deal_id)
+        if existing_deal:
+            # Atualiza campos importantes que o webhook pode não ter setado (ex: user_id)
+            existing_deal.user_id = data.user_id
+            existing_deal.created_by_id = data.resp_id
+            existing_deal.matricula = data.matricula
+            await self.repo.session.commit()
+            await self.repo.session.refresh(existing_deal)
+            return existing_deal
+            
         new_deal = DealModel(
             deal_id=deal_id,
             user_id=data.user_id,
-            title=f"[{datetime.now().strftime("%Y%m%d")}{deal_id}] {data.title}",
+            title=f"[{datetime.now().strftime('%Y%m%d')}{deal_id}] {data.title}",
             description=data.description,
             stage_id="C25:NEW",
             opened="Y",
@@ -159,7 +172,22 @@ class DealService:
             matricula=data.matricula,
         )
 
-        self.repo.session.add(new_deal)
-        await self.repo.session.commit()
-        await self.repo.session.refresh(new_deal)
-        return new_deal
+        try:
+            self.repo.session.add(new_deal)
+            await self.repo.session.commit()
+            await self.repo.session.refresh(new_deal)
+            return new_deal
+        except IntegrityError:
+            # Race condition: Webhook criou o deal milissegundos antes
+            await self.repo.session.rollback()
+            existing_deal = await self.repo.get_by_deal_id(deal_id)
+            if existing_deal:
+                existing_deal.user_id = data.user_id
+                existing_deal.created_by_id = data.resp_id
+                existing_deal.matricula = data.matricula
+                await self.repo.session.commit()
+                await self.repo.session.refresh(existing_deal)
+                return existing_deal
+            else:
+                # Se falhou por outro motivo que não duplicate (pouco provável para deal_id)
+                raise
