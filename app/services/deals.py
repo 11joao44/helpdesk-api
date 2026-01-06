@@ -170,7 +170,7 @@ class DealService:
             system_type=data.system_type,
             priority=data.priority,
             matricula=data.matricula,
-            requester_email=data.email, 
+            requester_email=data.email,
         )
 
         try:
