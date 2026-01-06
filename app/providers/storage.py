@@ -91,30 +91,39 @@ class StorageProvider:
         
         # Se for URL completa, tenta extrair a chave (path) relativa
         if object_name.startswith("http"):
+             # DEBUG LOGGING (Temporário)
+             print(f"🔍 [MinIO Debug] Analisando URL: {object_name}")
+             print(f"🔍 [MinIO Debug] Endpoint Configurado: {self.endpoint}")
+             print(f"🔍 [MinIO Debug] Bucket Esperado: {self.bucket_name}")
+
              # Extrai componentes da URL
-             parsed = urlparse(object_name)
-             path_parts = parsed.path.lstrip('/').split('/', 1)
-             
-             # Verifica se identificamos nosso bucket na URL (Host ou Path)
-             # Casos:
-             # 1. Host da URL bate com o Endpoint configurado (self.endpoint)
-             # 2. Caminho da URL começa com o nome do bucket (self.bucket_name) - útil se host for diferente (IP vs Domain)
-             is_my_bucket = False
-             
-             if self.endpoint in object_name:
-                 is_my_bucket = True
-             elif len(path_parts) > 1 and path_parts[0] == self.bucket_name:
-                 is_my_bucket = True
+             try:
+                 parsed = urlparse(object_name)
+                 path_parts = parsed.path.lstrip('/').split('/', 1)
+                 print(f"🔍 [MinIO Debug] Parsed Path: {parsed.path} -> Parts: {path_parts}")
                  
-             if is_my_bucket:
-                 # Se confirmou ser nosso bucket, tenta extrair o object_name real
-                 if len(path_parts) > 1 and path_parts[0] == self.bucket_name:
-                     object_name = path_parts[1] # folder/file.jpg
+                 is_my_bucket = False
+                 
+                 if self.endpoint in object_name:
+                     print("🔍 [MinIO Debug] Match: Endpoint encontrado na URL.")
+                     is_my_bucket = True
+                 elif len(path_parts) > 1 and path_parts[0] == self.bucket_name:
+                     print("🔍 [MinIO Debug] Match: Bucket encontrado no path.")
+                     is_my_bucket = True
+                     
+                 if is_my_bucket:
+                     # Se confirmou ser nosso bucket, tenta extrair o object_name real
+                     if len(path_parts) > 1 and path_parts[0] == self.bucket_name:
+                         object_name = path_parts[1] # folder/file.jpg
+                         print(f"🔍 [MinIO Debug] Key Extraída: {object_name}")
+                     else:
+                         print("🔍 [MinIO Debug] Falha: Host bateu mas bucket não bateu no path?")
+                         return object_name
                  else:
-                     # Fallback estranho (host bateu, mas path não tem bucket?), retorna original
+                     print("🔍 [MinIO Debug] URL Externa (sem match de endpoint ou bucket).")
                      return object_name
-             else:
-                 # Se for URL externa (ex: google user photo) e não bateu bucket/host, retorna como está
+             except Exception as e:
+                 print(f"❌ [MinIO Debug] Erro ao parsear URL: {e}")
                  return object_name
 
         try:

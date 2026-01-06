@@ -14,7 +14,7 @@ class DealModel(Base):
     deal_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
     title: Mapped[Optional[str]] = mapped_column(String(255))
     description: Mapped[Optional[str]] = mapped_column(Text)
-    stage_id: Mapped[Optional[str]] = mapped_column(String(30), index=True)
+    stage_id: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     opened: Mapped[Optional[str]] = mapped_column(String(1), index=True)
     closed: Mapped[Optional[str]] = mapped_column(String(1), index=True)
     created_by_id: Mapped[Optional[str]] = mapped_column(String(10), index=True)
@@ -30,7 +30,7 @@ class DealModel(Base):
     system_type: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     priority: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     matricula: Mapped[Optional[str]] = mapped_column(String(20), index=True)
-    responsible: Mapped[Optional[str]] = mapped_column(String(30), index=True)
+    responsible: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     responsible_email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     requester_email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     
