@@ -3,6 +3,7 @@ from app.routes.users import router as router_users
 from app.routes.webhook import router as router_webhooks
 from app.routes.tickets import router as router_tickets
 from app.routes.websockets import router as router_websockets
+from app.routes.uploads import router as router_uploads
 
 def create_routes(app: FastAPI) -> None:
         
@@ -12,3 +13,4 @@ def create_routes(app: FastAPI) -> None:
         app.include_router(router_webhooks)
         app.include_router(router_tickets)
         app.include_router(router_websockets)
+        app.include_router(router_uploads)
