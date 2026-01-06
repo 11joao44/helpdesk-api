@@ -19,6 +19,8 @@ services:
       - PG_BOTAPP_PORT
       - PG_BOTAPP_USER
       - WEBMAIL_USUARIO
+      - MINIO_USER
+      - MINIO_SENHA
       - WEBMAIL_SENHA
       - IP_SERVIDOR_NFS
     labels:
