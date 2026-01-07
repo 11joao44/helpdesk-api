@@ -3,7 +3,8 @@ from fastapi import HTTPException, status, UploadFile
 from app.core.security import create_reset_token
 from app.repositories.users import UserRepository
 from app.models import UserModel
-from app.schemas.users import ChackAvailability, ForgotPasswordRequest, ResetPasswordRequest, UserLogin, UserOut, UserRegister
+from app.models import UserModel
+from app.schemas.users import ChackAvailability, ForgotPasswordRequest, ResetPasswordRequest, UserLogin, UserOut, UserRegister, UserSchema
 from app.core.config import settings
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -61,6 +62,23 @@ class UserService:
         user = await self.user_repo.get_by_id(id)
         not_found(user, UserModel, id)
         await self.user_repo.delete(user)
+        
+    async def update_phone(self, user_id: int, phone_number: str) -> UserOut:
+        
+        existing_user = await self.user_repo.get_by_phone_number(phone_number)
+        if existing_user and existing_user.id != user_id:
+             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Telefone já cadastrado por outro usuário.")
+        
+        # 2. Update user
+        user = await self.user_repo.get_by_id(user_id)
+        not_found(user, UserModel, user_id)
+        
+        user.phone_number = phone_number
+        
+        # Save changes (repo.create adds and commits, acting as save/merge for attached objects)
+        await self.user_repo.create(user)
+        
+        return self._prepare_user_out(user)
 
     def hash_password(self, password: str) -> str:
         return hashpw(password.encode('utf-8'), gensalt()).decode('utf-8')
@@ -191,6 +209,10 @@ class UserService:
         if data.field == "cpf":
             if await self.user_repo.get_by_cpf(data.value):
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CPF já cadastrado.")
+        
+        if data.field == "phone_number":
+            if await self.user_repo.get_by_phone_number(data.value):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Telefone já cadastrado.")
             
         if data.field == "email":
             if await self.user_repo.get_by_email(data.value):

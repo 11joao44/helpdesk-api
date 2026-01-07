@@ -21,6 +21,7 @@ class UserRegister(BaseModel):
     filial: str
     cpf: str
     matricula: str
+    phone_number: str
 
 class UserDetailsSchema(UserSchema):
     full_name: str
@@ -43,6 +44,7 @@ class UserOut(BaseModel):
     created_at: datetime
     updated_at:  Optional[datetime] = None
     profile_picture_url: Optional[str] = None
+    phone_number: Optional[str] = None
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -60,6 +62,9 @@ class LoginResponse(BaseModel):
 
 class TokenRefreshRequest(BaseModel):
     refresh_token: str
+
+class PhoneUpdateRequest(BaseModel):
+    phone_number: str
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr

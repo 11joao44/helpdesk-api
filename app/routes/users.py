@@ -5,7 +5,7 @@ from app.services.users import UserService
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import session_db
 from app.core.security import  require_admin, get_current_user_from_cookie
-from app.schemas.users import (ChackAvailability, ForgotPasswordRequest, LoginResponse, ResetPasswordRequest, UserRegister, UserOut, UserLogin)
+from app.schemas.users import (ChackAvailability, ForgotPasswordRequest, LoginResponse, ResetPasswordRequest, UserRegister, UserOut, UserLogin, PhoneUpdateRequest)
 
 router = APIRouter(prefix="/auth", tags=["users"])
 
@@ -68,10 +68,7 @@ async def login(user: UserLogin, response: Response, service: UserService = Depe
 
 
 @router.get("/me", response_model=UserOut)
-async def read_users_me(
-    current_user: UserModel = Depends(get_current_user_from_cookie),
-    service: UserService = Depends(get_service)
-):
+async def read_users_me(current_user: UserModel = Depends(get_current_user_from_cookie), service: UserService = Depends(get_service)):
     # Usa o service para preparar o UserOut, gerando a URL assinada nova
     return service._prepare_user_out(current_user)
 
@@ -126,15 +123,20 @@ async def forgot_password(data: ForgotPasswordRequest, service: UserService = De
 async def reset_password(data: ResetPasswordRequest, service: UserService = Depends(get_service)):
     return await service.reset_password(data)
 
+
 @router.get("/check-availability", status_code=status.HTTP_200_OK)
 async def chack_availability(data: ChackAvailability = Depends(), service: UserService = Depends(get_service)):
+    """Verifica a disponibilidade de um usuário"""
     return await service.chack_availability(data)
 
+
 @router.post('/users/avatar', status_code=status.HTTP_200_OK, response_model=UserOut)
-async def upload_avatar(
-    file: UploadFile = File(...), 
-    service: UserService = Depends(get_service),
-    current_user: UserModel = Depends(get_current_user_from_cookie)
-):
-    # O método receive o user_id e a imagem
+async def upload_avatar(file: UploadFile = File(...), service: UserService = Depends(get_service), current_user: UserModel = Depends(get_current_user_from_cookie)):
+    """O método receive o user_id e a imagem"""
     return await service.upload_profile_picture(current_user.id, file)
+
+@router.post('/users/me/phone', status_code=status.HTTP_200_OK, response_model=UserOut)
+async def update_phone_number(data: PhoneUpdateRequest, service: UserService = Depends(get_service), current_user: UserModel = Depends(get_current_user_from_cookie)):
+    """Atualiza o telefone do usuário"""
+    return await service.update_phone(current_user.id, data.phone_number)
+

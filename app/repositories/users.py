@@ -37,6 +37,13 @@ class UserRepository:
         return result.scalar_one_or_none()
 
 
+    async def get_by_phone_number(self, phone_number: str) -> UserModel | None:
+        result = await self.session.execute(
+            select(UserModel).where(UserModel.phone_number == phone_number)
+        )
+        return result.scalar_one_or_none()
+
+
     async def create(self, data: UserModel) -> UserModel:
         self.session.add(data)
         await self.session.commit()
