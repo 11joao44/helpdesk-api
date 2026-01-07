@@ -1,4 +1,6 @@
 import httpx
+import re
+import base64
 from datetime import datetime
 from typing import Optional, Dict, Any
 from app.core.config import settings
@@ -127,27 +129,72 @@ class BitrixProvider:
 
     async def _add_comment_with_files(self, deal_id: int, attachments: list):
         """Adiciona um comentário no Deal contendo os arquivos anexados"""
-        print(
-            f"📎 [Bitrix] Anexando {len(attachments)} arquivos ao Deal {deal_id} via Timeline..."
-        )
+        return await self.add_comment(deal_id, "Arquivos enviados durante a abertura do chamado.", attachments)
 
-        # Formato para crm.timeline.comment.add: [["nome.ext", "base64..."], ...]
+    async def add_comment(self, deal_id: int, message: str, attachments: list = []) -> int | None:
+        """Adiciona um comentário (com ou sem anexos) na timeline do Deal."""
+        print(f"💬 [Bitrix] Adicionando comentário ao Deal {deal_id}...")
+
         files_payload = []
-        for att in attachments:
-            files_payload.append([att.get("name"), att.get("content")])
+        
+        # 1. Processar anexos explícitos (se existirem)
+        if attachments:
+            for att in attachments:
+                files_payload.append([att.get("name"), att.get("content")])
+
+        # 2. Processar imagens embutidas no HTML (tags <img>) e limpar HTML
+        # Ex: <img src="http://..."> -> remove tag e adiciona imagem como anexo
+        img_tags = re.findall(r'<img[^>]+src="([^">]+)"', message)
+        
+        if img_tags:
+            async with httpx.AsyncClient() as client:
+                for idx, img_url in enumerate(img_tags):
+                    try:
+                        # Decodifica HTML entities na URL (&amp; -> &) se houver
+                        img_url_clean = img_url.replace("&amp;", "&")
+                        
+                        resp = await client.get(img_url_clean, timeout=30.0)
+                        if resp.status_code == 200:
+                            # Converte para base64
+                            b64_content = base64.b64encode(resp.content).decode("utf-8")
+                            
+                            # Tenta adivinhar nome/extensão
+                            filename = f"image_embedded_{idx}.png"
+                            # Se a URL tiver path, tenta extrair o nome
+                            url_match = re.search(r'/([^/?#]+\.(?:png|jpg|jpeg|gif|pdf))', img_url_clean, re.IGNORECASE)
+                            if url_match:
+                                filename = url_match.group(1)
+
+                            files_payload.append([filename, b64_content])
+                        else:
+                            print(f"⚠️ [Bitrix] Falha ao baixar imagem {idx}: {resp.status_code}")
+                    except Exception as e:
+                        print(f"❌ [Bitrix] Erro ao processar imagem embutida {idx}: {e}")
+
+            # Remove as tags de imagem do corpo da mensagem
+            message = re.sub(r'<img[^>]+>', '', message)
+
+        # Limpeza extra pedida pelo usuário: remover tags <p>
+        clean_message = message.replace("<p>", "").replace("</p>", "").strip()
 
         payload = {
             "fields": {
                 "ENTITY_ID": deal_id,
                 "ENTITY_TYPE": "deal",
-                "COMMENT": "Arquivos enviados durante a abertura do chamado.",
+                "COMMENT": clean_message,
                 "FILES": files_payload,
             }
         }
 
-        await self._call_bitrix(
+        # Remove FILES key if empty to be safe (though empty list might be fine)
+        if not files_payload:
+            payload["fields"].pop("FILES")
+
+        result = await self._call_bitrix(
             "crm.timeline.comment.add", json_body=payload, method="POST"
         )
+        
+        return int(result) if result else None
 
     async def get_deal(self, deal_id: int) -> Optional[Dict[str, Any]]:
         print(f"📡 [Provider] Buscando Deal {deal_id}...")
@@ -173,6 +220,45 @@ class BitrixProvider:
         print(f"📡 [Provider] Buscando Atividade {activity_id}...")
         return await self._call_bitrix("crm.activity.get", params={"id": activity_id})
 
+    async def list_timeline_comments(self, deal_id: int) -> list:
+        """Lista os comentários da timeline de um Deal."""
+        # crm.timeline.comment.list não é um método padrão documentado tão claramente quanto crm.activity.list
+        # Mas vamos tentar filtrar activities do type COMMENT ou usar o método apropriado se existir.
+        # Na verdade, comentários de timeline costumam ser atividades com provider ID específico ou método próprio.
+        # Porém, a API oficial sugere crm.timeline.comment.list
+        
+        print(f"📡 [Provider] Listando comentários da timeline do Deal {deal_id}...")
+        results = await self._call_bitrix(
+            "crm.timeline.comment.list",
+            json_body={
+                "filter": {
+                    "ENTITY_ID": deal_id,
+                    "ENTITY_TYPE": "deal"
+                },
+                "select": ["ID", "CREATED", "AUTHOR_ID", "COMMENT", "FILES"],
+                "order": {"CREATED": "DESC"}
+            },
+            method="POST"
+        )
+        return results if isinstance(results, list) else []
+
+    async def list_activities(self, deal_id: int) -> list:
+        """Lista todas as atividades de um Deal."""
+        print(f"📡 [Provider] Listando atividades do Deal {deal_id}...")
+        results = await self._call_bitrix(
+            "crm.activity.list",
+            json_body={
+                "filter": {
+                    "OWNER_ID": deal_id,
+                    "OWNER_TYPE_ID": 2 # Deal
+                },
+                "select": ["*"], # Pega tudo
+                "order": {"CREATED": "DESC"}
+            },
+            method="POST"
+        )
+        return results if isinstance(results, list) else []
+
     async def _call_bitrix(self, endpoint: str, params: Dict = None, json_body: Dict = None, method: str = "GET") -> Optional[Any]:
         """
         - GET: Usa 'params' (Query String) -> Bom para leituras.
@@ -195,7 +281,7 @@ class BitrixProvider:
 
                 response.raise_for_status()  # Lança erro se for 400/500
                 data = response.json()
-                print("Retorno da api bitrix criar ticket: ", data)
+                # print("Retorno da api bitrix criar ticket: ", data)
 
                 if "result" in data:
                     return data["result"]

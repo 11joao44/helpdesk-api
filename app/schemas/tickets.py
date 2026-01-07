@@ -62,3 +62,9 @@ class TicketCloseRequest(BaseModel):
     deal_id: int
     rating: Optional[int] = None
     comment: Optional[str] = None
+
+
+class TicketAddCommentRequest(BaseModel):
+    deal_id: int
+    message: str
+    attachments: Optional[List[Dict[str, str]]] = []

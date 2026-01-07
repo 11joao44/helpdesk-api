@@ -5,7 +5,7 @@ from app.core.database import session_db
 from app.repositories.deals import DealRepository
 from app.schemas.deals import DealCardCreateSchema, DealCardSchema
 from app.services.deals import DealService
-from app.schemas.tickets import TicketCloseRequest, TicketCreateRequest, TicketSendEmail
+from app.schemas.tickets import TicketCloseRequest, TicketCreateRequest, TicketSendEmail, TicketAddCommentRequest
 from app.providers.storage import StorageProvider
 
 router = APIRouter(tags=["Tickets"])
@@ -73,6 +73,21 @@ async def close_ticket_route(
 ):
     """Encerra um ticket, move para etapa 'Ganho' no Bitrix e salva avaliação."""
     return await service.close_ticket(payload)
+
+
+@router.post("/ticket/comment")
+async def add_ticket_comment(payload: TicketAddCommentRequest, service: DealService = Depends(get_service)):
+    """Adiciona um comentário (texto e/ou anexos) a um ticket no Bitrix."""
+    success = await service.add_comment(
+        deal_id=payload.deal_id,
+        message=payload.message,
+        attachments=payload.attachments
+    )
+    
+    if success:
+        return {"status": "success", "message": "Comentário adicionado com sucesso"}
+    
+    return {"status": "error", "message": "Falha ao adicionar comentário no Bitrix"}
 
 
 @router.get("/tickets/{user_id}", response_model=List[DealCardSchema])

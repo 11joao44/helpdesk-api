@@ -86,8 +86,125 @@ class WebhookService:
             "responsible_email": responsible['email'],
         }
 
+        # Salva o Deal
         await self.deal_repo.upsert_deal(deal_data)
+        
+        # Sincroniza comentários da linha do tempo
+        await self._sync_timeline_for_deal(deal_id)
 
+
+    async def _sync_timeline_for_deal(self, bitrix_deal_id: int):
+        """Busca comentários da timeline e sincroniza com base local."""
+        print(f"🔄 Sincronizando timeline do Deal {bitrix_deal_id}...")
+        
+        # 1. Busca comentários no Bitrix
+        comments_list = await self.bitrix.list_timeline_comments(bitrix_deal_id)
+        
+        # Para cada comentário, tenta salvar como Activity
+        for comm in comments_list:
+            # comm ex: {'ID': '177369', 'CREATED': '2026-01-07T21:40:05+03:00', 'AUTHOR_ID': '36', 'COMMENT': 'Lorem ipsum', 'FILES': {...}}
+            
+            comm_id_int = int(comm["ID"])
+            existing = await self.activity_repo.get_by_activity_id(comm_id_int)
+            
+            if existing:
+                continue # Já temos, pula (ou poderia atualizar se quisesse editar)
+                
+            print(f"📥 Importando novo comentário {comm_id_int} do Bitrix...")
+            
+            # Busca ID interno do Deal
+            internal_deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
+            if not internal_deal_id:
+                print(f"⚠️ Deal {bitrix_deal_id} sem ID interno. Pulando comentário.")
+                continue
+
+            # Extração de Author/User
+            author_id = comm.get("AUTHOR_ID")
+            # Tenta pegar info do user se não tivermos
+            responsible_info = {}
+            if author_id:
+                responsible_info = await self.bitrix.get_responsible(author_id) or {}
+
+            # Extração de Arquivos
+            files_data = comm.get("FILES") or []
+            files_list = []
+            if isinstance(files_data, dict):
+                 files_list = list(files_data.values())
+            elif isinstance(files_data, list):
+                 files_list = files_data
+            
+            # Monta payload da Activity
+            activity_data = {
+                "deal_id": internal_deal_id,
+                "activity_id": comm_id_int,
+                "owner_type_id": "2",
+                "type_id": "COMM",             # Mapeia para nosso tipo curto
+                "provider_id": "CRM_COMMENT",
+                "provider_type_id": "COMMENT",
+                "direction": "2",              # Entrada/Saída não se aplica bem, mas 2=Saída é ok
+                "subject": "Comentário via Bitrix",
+                "description": comm.get("COMMENT"),
+                "body_html": comm.get("COMMENT"),
+                "description_type": "1",       # 1=Texto simples (geralmente), Bitrix manda HTML as vezes
+                "responsible_id": author_id,
+                "responsible_name": responsible_info.get("responsible"),
+                "responsible_email": responsible_info.get("email"),
+                "author_id": author_id,
+                "created_at_bitrix": self._parse_date(comm.get("CREATED"))
+            }
+            
+            # Salva
+            new_activity = await self.activity_repo.upsert_activity(activity_data)
+            
+            # Processa Arquivos
+            processed_files = []
+            for f in files_list:
+                # f ex: {'id': 123, 'url': ...}
+                file_id = f.get("id")
+                if not file_id: continue
+                
+                res = await self._process_attachment(f)
+                if res:
+                    url_minio, fname = res
+                    processed_files.append({
+                         "activity_id": new_activity.id,
+                         "bitrix_file_id": file_id,
+                         "file_url": url_minio,
+                         "filename": fname
+                    })
+            
+            if processed_files:
+                await self.activity_repo.sync_files(new_activity.id, processed_files)
+                new_activity.file_url = processed_files[0]["file_url"]
+                self.activity_repo.session.add(new_activity)
+
+            # Broadcast WebSocket
+            await self._broadcast_new_activity(new_activity, internal_deal_id, bitrix_deal_id)
+
+    async def _broadcast_new_activity(self, activity, internal_deal_id, bitrix_deal_id):
+        try:
+            from app.providers.websocket import manager
+            from app.schemas.activity import ActivitySchema
+            
+            # Recarrega do banco para pegar relacionamentos novos
+            saved = await self.activity_repo.get_by_activity_id(activity.activity_id)
+            if not saved: return # Safety check
+            
+            schema = ActivitySchema.model_validate(saved)
+            
+            print(f"📢 Broadcast de Comentário Bitrix {activity.activity_id} via WebSocket...")
+            await manager.broadcast(
+                message={"type": "NEW_ACTIVITY", "payload": schema.model_dump(mode='json')},
+                deal_id=str(internal_deal_id)
+            )
+             # Broadcast duplicado para garantir (ID interno vs externo)
+            await manager.broadcast(
+                message={"type": "NEW_ACTIVITY", "payload": schema.model_dump(mode='json')},
+                deal_id=str(bitrix_deal_id)
+            )
+
+        except Exception as e:
+            print(f"⚠️ Erro Broadcast Webhook: {e}")
 
     async def _sync_activity(self, activity_id: int):
         raw = await self.bitrix.get_activity(activity_id)
@@ -239,35 +356,7 @@ class WebhookService:
         print(f"📧 Atividade {activity_id} processada com {len(processed_files)} anexos.")
 
         # --- 7. Real-time Broadcast ---
-        try:
-            from app.providers.websocket import manager
-            
-            saved_activity = await self.activity_repo.get_by_activity_id(activity.activity_id)
-            
-            if saved_activity:
-                from app.schemas.activity import ActivitySchema
-                activity_schema = ActivitySchema.model_validate(saved_activity)
-                
-                # Hack rápido para serializar datetime -> str (json)
-                print(f"📡 Tentando broadcasting para Deal {internal_deal_id} (Internal) e {bitrix_deal_id} (Bitrix)...")
-                
-                # Broadcast para ambos IDs para garantir compatibilidade
-                await manager.broadcast(
-                    message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
-                    deal_id=str(internal_deal_id)
-                )
-                
-                await manager.broadcast(
-                     message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
-                     deal_id=str(bitrix_deal_id)
-                )
-
-                print(f"✅ Broadcast executado.")
-        except Exception as e:
-            print(f"⚠️ Erro ao transmitir WebSocket: {e}")
-            import traceback
-            traceback.print_exc()
-
+        await self._broadcast_new_activity(activity, internal_deal_id, bitrix_deal_id)
 
 
     async def _process_attachment(self, file_data: dict) ->  tuple[str, str] | None:

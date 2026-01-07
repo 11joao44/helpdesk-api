@@ -137,6 +137,127 @@ class DealService:
         return activity_id
 
 
+    async def add_comment(self, deal_id: int, message: str, attachments: list = []) -> bool:
+        """Adiciona um comentário ao Deal via Bitrix."""
+        comment_id = await self.bitrix.add_comment(deal_id, message, attachments)
+        print("comment_id: ",comment_id)
+        if comment_id:
+            # --- Real-time Broadcast ---
+            try:
+                from app.providers.websocket import manager
+                from app.schemas.activity import ActivitySchema, ActivityFileSchema
+
+                # Busca Deal para ter o ID interno
+                deal = await self.repo.get_by_deal_id(deal_id)
+                internal_deal_id = deal.id if deal else 0
+                
+                # --- Preparar Arquivos para Preview Imediato ---
+                temp_files = []
+                if attachments:
+                    for idx, att in enumerate(attachments):
+                        b64_content = att.get("content", "")
+                        filename = att.get("name", f"file_{idx}")
+                                
+                        # Detectar mime type básico
+                        mime = "application/octet-stream"
+                        if filename.lower().endswith(".png"): mime = "image/png"
+                        elif filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"): mime = "image/jpeg"
+                        elif filename.lower().endswith(".pdf"): mime = "application/pdf"
+                                
+                        data_uri = f"data:{mime};base64,{b64_content}"
+                                
+                        temp_file = ActivityFileSchema(
+                            id=0,
+                            bitrix_file_id=0,
+                            file_url=data_uri,
+                            filename=filename,
+                            created_at=datetime.now(timezone.utc)
+                        )
+                        temp_files.append(temp_file)
+
+                activity_payload = ActivitySchema(
+                    id=0,
+                    activity_id=comment_id,
+                    deal_id=internal_deal_id,
+                    owner_type_id="2",
+                    type_id="COMM",          # Front deve saber lidar ou exibir genérico
+                    provider_id="CRM_COMMENT", 
+                    provider_type_id="COMMENT",
+                    direction="2", # Outgoing
+                    description=message,
+                    body_html=message,
+                    description_type="3", # HTML
+                    completed="Y",
+                    priority="2",
+                    created_at=datetime.now(timezone.utc),
+                    files=temp_files,
+                    # Campos Opcionais obrigatórios pelo Schema (se não tiver default)
+                    responsible_id=str(deal.created_by_id) if deal else None,
+                    responsible_name=None,
+                    responsible_email=None,
+                    sender_email=None,
+                    to_email=None,
+                    from_email=None,
+                    receiver_email=None,
+                    author_id=None,
+                    editor_id=None,
+                    read_confirmed=None,
+                    file_id=None,
+                    file_url=None,
+                    created_at_bitrix=datetime.now(timezone.utc)
+                )
+
+                # Broadcast interno (ID do Banco)
+                if internal_deal_id:
+                    await manager.broadcast(
+                        message={"type": "NEW_ACTIVITY", "payload": activity_payload.model_dump(mode='json')},
+                        deal_id=str(internal_deal_id)
+                    )
+                
+                # Broadcast externo (ID Bitrix)
+                await manager.broadcast(
+                    message={"type": "NEW_ACTIVITY", "payload": activity_payload.model_dump(mode='json')},
+                    deal_id=str(deal_id)
+                )
+                
+                # --- Persistir no Banco de Dados ---
+                if not internal_deal_id:
+                     print(f"⚠️ [AddComment] Deal {deal_id} não encontrado localmente. Pulusando persistência.")
+                     return True
+
+                from app.repositories.activity import ActivityRepository
+                act_repo = ActivityRepository(self.repo.session)
+                
+                db_activity_data = {
+                    "deal_id": internal_deal_id,
+                    "activity_id": comment_id,
+                    "owner_type_id": "2",
+                    "type_id": "COMM",
+                    "provider_id": "CRM_COMMENT",
+                    "provider_type_id": "COMMENT",
+                    "direction": "2",
+                    "subject": "",
+                    "description": message,
+                    "body_html": message,
+                    "description_type": "3",
+                    "created_at_bitrix": datetime.now(timezone.utc)
+                }
+
+                print(f"💾 [AddComment] Tentando salvar atividade: {db_activity_data}")
+                
+                await act_repo.upsert_activity(db_activity_data)
+                await self.repo.session.commit()
+                print(f"✅ [AddComment] Atividade {comment_id} salva com sucesso.")
+
+            except Exception as e:
+                import traceback
+                print(f"⚠️ Erro ao processar pós-comentário (AddComment): {e}")
+                traceback.print_exc()
+
+        return comment_id is not None
+
+        return comment_id is not None
+
     async def create_ticket(self, data: TicketCreateRequest) -> DealModel:
         deal_id = await self.bitrix.create_deal(data)
 
