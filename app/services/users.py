@@ -69,11 +69,17 @@ class UserService:
         return checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
     
     async def login(self, data: UserLogin) -> Dict[str, Any]:
-        user = await self.user_repo.get_by_matricula(data.matricula)
+        login = data.login
 
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matricula não encontrado")
-
+        if len(login) == 11:
+            user = await self.user_repo.get_by_cpf(login)
+            if not user:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CPF não encontrado")
+        else:
+            user = await self.user_repo.get_by_matricula(login)
+            if not user:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matricula não encontrado")
+        
         if not self.verify_password(data.password, user.hashed_password):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas.")
             

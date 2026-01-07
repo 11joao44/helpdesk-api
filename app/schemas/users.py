@@ -28,7 +28,7 @@ class UserDetailsSchema(UserSchema):
     password: str
 
 class UserLogin(BaseModel):
-    matricula: str
+    login: str
     password: str
 
 class UserOut(BaseModel):
