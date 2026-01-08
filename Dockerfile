@@ -43,7 +43,7 @@ USER appuser
 
 ENV PATH="/code/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    UVICORN_WORKERS=4 \
+    UVICORN_WORKERS=1 \
     PORT=8024
 
 EXPOSE 8024
