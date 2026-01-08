@@ -43,12 +43,13 @@ class WebhookService:
             # Rota de NEGÓCIOS
             if event in ["ONCRMDEALADD", "ONCRMDEALUPDATE"]:
                 await self._sync_deal(object_id)
-                await self.deal_repo.session.commit() # Confirma transação do Deal
+                await self._sync_deal(object_id)
+                # await self.deal_repo.session.commit() # Commit movido para dentro do _sync
             
             # Rota de ATIVIDADES
             elif event in ["ONCRMACTIVITYADD", "ONCRMACTIVITYUPDATE"]:
                 await self._sync_activity(object_id)
-                await self.activity_repo.session.commit() # Confirma transação da Activity
+                # await self.activity_repo.session.commit() # Commit movido para dentro do _sync
 
            # print(f"✅ Sucesso: {event} | ID: {object_id}")
 
@@ -179,6 +180,9 @@ class WebhookService:
                 await self.activity_repo.sync_files(new_activity.id, processed_files)
                 new_activity.file_url = processed_files[0]["file_url"]
                 self.activity_repo.session.add(new_activity)
+
+            # Commit ANTES do Broadcast para evitar Race Condition no Front
+            await self.activity_repo.session.commit()
 
             # Broadcast WebSocket
             await self._broadcast_new_activity(new_activity, internal_deal_id, bitrix_deal_id)
@@ -361,6 +365,9 @@ class WebhookService:
              self.activity_repo.session.add(activity)
 
         print(f"📧 Atividade {activity_id} processada com {len(processed_files)} anexos.")
+
+        # Commit ANTES do Broadcast para evitar Race Condition no Front
+        await self.activity_repo.session.commit()
 
         # --- 7. Real-time Broadcast ---
         await self._broadcast_new_activity(activity, internal_deal_id, bitrix_deal_id)
