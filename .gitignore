@@ -9,6 +9,7 @@ collections.json
 .cursorrules
 .cursorignore
 FRONTEND_ARCHITECTURE.md
+temp_rules_update.md
 
 # Virtual environments
 .venv

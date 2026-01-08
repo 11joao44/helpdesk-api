@@ -116,8 +116,8 @@ class WebhookService:
             print(f"📥 Importando novo comentário {comm_id_int} do Bitrix...")
             
             # Busca ID interno do Deal
-            internal_deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
-            if not internal_deal_id:
+            deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
+            if not deal_id:
                 print(f"⚠️ Deal {bitrix_deal_id} sem ID interno. Pulando comentário.")
                 continue
 
@@ -138,7 +138,7 @@ class WebhookService:
             
             # Monta payload da Activity
             activity_data = {
-                "deal_id": internal_deal_id,
+                "deal_id": deal_id,
                 "activity_id": comm_id_int,
                 "owner_type_id": "2",
                 "type_id": "COMM",             # Mapeia para nosso tipo curto
@@ -185,9 +185,9 @@ class WebhookService:
             await self.activity_repo.session.commit()
 
             # Broadcast WebSocket
-            await self._broadcast_new_activity(new_activity, internal_deal_id, bitrix_deal_id)
+            await self._broadcast_new_activity(new_activity, deal_id, bitrix_deal_id)
 
-    async def _broadcast_new_activity(self, activity, internal_deal_id, bitrix_deal_id):
+    async def _broadcast_new_activity(self, activity, deal_id, bitrix_deal_id):
         try:
             from app.providers.websocket import manager
             from app.schemas.activity import ActivitySchema
@@ -198,17 +198,8 @@ class WebhookService:
             
             schema = ActivitySchema.model_validate(saved)
             
-            print(f"📢 Broadcast de Comentário Bitrix {activity.activity_id} via WebSocket...")
             payload = schema.model_dump(mode='json')
-            
-            # Broadcast Interno (Payload original com ID Interno)
-            await manager.broadcast(
-                message={"type": "NEW_ACTIVITY", "payload": payload},
-                deal_id=str(internal_deal_id)
-            )
 
-             # Broadcast Externo (Payload ajustado com ID Bitrix para o Front)
-            payload["deal_id"] = bitrix_deal_id
             await manager.broadcast(
                 message={"type": "NEW_ACTIVITY", "payload": payload},
                 deal_id=str(bitrix_deal_id)
@@ -219,7 +210,7 @@ class WebhookService:
 
     async def _sync_activity(self, activity_id: int):
         raw = await self.bitrix.get_activity(activity_id)
-        print("Row DESCRIPTION: ",  raw.get("DESCRIPTION"))
+        print("Raw DESCRIPTION: ",  raw.get("DESCRIPTION"))
         if not raw: return
 
         # 1. Valida se é Deal (Type 2)
@@ -229,15 +220,15 @@ class WebhookService:
         bitrix_deal_id = int(raw.get("OWNER_ID"))
         
         # 2. Busca o ID interno usando o repositório de DEALS (Correção de responsabilidade)
-        internal_deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
-
+        deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
+        print("Deal ID WS: ", bitrix_deal_id)
         # 3. Lógica de "Auto-Healing" (Se não achar o pai, cria ele)
-        if not internal_deal_id:
+        if not deal_id:
             print(f"⚠️ Pai não encontrado. Sincronizando Deal {bitrix_deal_id}...")
             await self._sync_deal(bitrix_deal_id)
-            internal_deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
+            deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
             
-            if not internal_deal_id: 
+            if not deal_id: 
                 print(f"❌ Falha: Não foi possível criar o Deal pai {bitrix_deal_id}.")
                 return
 
@@ -283,7 +274,7 @@ class WebhookService:
 
         # 5. Montagem do Objeto (Activity)
         activity_data = {
-            "deal_id": internal_deal_id,       # ID Interno (FK)
+            "deal_id": deal_id,       # ID Interno (FK)
             "activity_id": int(raw["ID"]),     # ID Bitrix
             
             "owner_type_id": str(raw.get("OWNER_TYPE_ID")),
@@ -370,7 +361,7 @@ class WebhookService:
         await self.activity_repo.session.commit()
 
         # --- 7. Real-time Broadcast ---
-        await self._broadcast_new_activity(activity, internal_deal_id, bitrix_deal_id)
+        await self._broadcast_new_activity(activity, deal_id, bitrix_deal_id)
 
 
     async def _process_attachment(self, file_data: dict) ->  tuple[str, str] | None:
