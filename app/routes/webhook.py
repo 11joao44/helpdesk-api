@@ -30,6 +30,8 @@ def get_webhook_service(db: AsyncSession = Depends(session_db)) -> WebhookServic
 async def handle_bitrix_webhook(request: Request,  service: WebhookService = Depends(get_webhook_service)):
     """Endpoint oficial de integração. Recebe o ID -> Busca Detalhes -> Salva no Banco."""
     # await debug_request(request)
+    form_data = await request.form()
+    print("Evento recebido: ", form_data.get("event"))
     await service.process_webhook(request)
     return "OK"
 
