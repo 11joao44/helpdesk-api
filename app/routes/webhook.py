@@ -8,6 +8,7 @@ from app.repositories.deals import DealRepository
 from app.repositories.activity import ActivityRepository
 from app.schemas.deals import DealCardSchema
 from typing import List
+from app.core.logger import logger
 
 router = APIRouter(tags=["Webhook Bitrix24"])
 
@@ -31,7 +32,7 @@ async def handle_bitrix_webhook(request: Request,  service: WebhookService = Dep
     """Endpoint oficial de integração. Recebe o ID -> Busca Detalhes -> Salva no Banco."""
     # await debug_request(request)
     form_data = await request.form()
-    print("Evento recebido: ", form_data.get("event"))
+    logger.info("Evento recebido: ", form_data.get("event"))
     await service.process_webhook(request)
     return "OK"
 

@@ -208,7 +208,7 @@ class WebhookService:
 
     async def _sync_activity(self, activity_id: int):
         raw = await self.bitrix.get_activity(activity_id)
-        print("Row DESCRIPTION: ",  raw.get("DESCRIPTION"))
+        logger.info("Row DESCRIPTION: ",  raw.get("DESCRIPTION"))
         if not raw: return
 
         # 1. Valida se é Deal (Type 2)
