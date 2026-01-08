@@ -193,13 +193,18 @@ class WebhookService:
             schema = ActivitySchema.model_validate(saved)
             
             print(f"📢 Broadcast de Comentário Bitrix {activity.activity_id} via WebSocket...")
+            payload = schema.model_dump(mode='json')
+            
+            # Broadcast Interno (Payload original com ID Interno)
             await manager.broadcast(
-                message={"type": "NEW_ACTIVITY", "payload": schema.model_dump(mode='json')},
+                message={"type": "NEW_ACTIVITY", "payload": payload},
                 deal_id=str(internal_deal_id)
             )
-             # Broadcast duplicado para garantir (ID interno vs externo)
+
+             # Broadcast Externo (Payload ajustado com ID Bitrix para o Front)
+            payload["deal_id"] = bitrix_deal_id
             await manager.broadcast(
-                message={"type": "NEW_ACTIVITY", "payload": schema.model_dump(mode='json')},
+                message={"type": "NEW_ACTIVITY", "payload": payload},
                 deal_id=str(bitrix_deal_id)
             )
 
