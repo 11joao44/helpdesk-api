@@ -28,6 +28,7 @@ class ConnectionManager:
             logger.info(f"📢 Broadcasting mensagem para Deal {deal_id} ({len(self.active_connections[deal_id])} conexões)")
             for connection in self.active_connections[deal_id]:
                 try:
+                    print("Broadcasting message:", message)
                     await connection.send_json(message)
                 except Exception as e:
                     logger.error(f"❌ Erro ao enviar mensagem WS: {e}")

@@ -140,7 +140,6 @@ class DealService:
     async def add_comment(self, deal_id: int, message: str, attachments: list = []) -> bool:
         """Adiciona um comentário ao Deal via Bitrix."""
         comment_id = await self.bitrix.add_comment(deal_id, message, attachments)
-        print("comment_id: ",comment_id)
         if comment_id:
             # --- Real-time Broadcast ---
             try:
@@ -149,7 +148,6 @@ class DealService:
 
                 # Busca Deal para ter o ID interno
                 deal = await self.repo.get_by_deal_id(deal_id)
-                internal_deal_id = deal.id if deal else 0
                 
                 # --- Preparar Arquivos para Preview Imediato ---
                 temp_files = []
@@ -176,9 +174,9 @@ class DealService:
                         temp_files.append(temp_file)
 
                 activity_payload = ActivitySchema(
-                    id=0,
+                    id=deal.id,
                     activity_id=comment_id,
-                    deal_id=internal_deal_id,
+                    deal_id=deal.deal_id,
                     owner_type_id="2",
                     type_id="COMM",          # Front deve saber lidar ou exibir genérico
                     provider_id="CRM_COMMENT", 
@@ -207,12 +205,7 @@ class DealService:
                     created_at_bitrix=datetime.now(timezone.utc)
                 )
 
-                # Broadcast interno (ID do Banco)
-                if internal_deal_id:
-                    await manager.broadcast(
-                        message={"type": "NEW_ACTIVITY", "payload": activity_payload.model_dump(mode='json')},
-                        deal_id=str(internal_deal_id)
-                    )
+                # Broadcast unificado (ID Bitrix)
                 
                 # Broadcast externo (ID Bitrix)
                 await manager.broadcast(
@@ -221,7 +214,7 @@ class DealService:
                 )
                 
                 # --- Persistir no Banco de Dados ---
-                if not internal_deal_id:
+                if not deal.deal_id:
                      print(f"⚠️ [AddComment] Deal {deal_id} não encontrado localmente. Pulusando persistência.")
                      return True
 
@@ -229,7 +222,7 @@ class DealService:
                 act_repo = ActivityRepository(self.repo.session)
                 
                 db_activity_data = {
-                    "deal_id": internal_deal_id,
+                    "deal_id": deal.id,
                     "activity_id": comment_id,
                     "owner_type_id": "2",
                     "type_id": "COMM",
@@ -253,8 +246,6 @@ class DealService:
                 import traceback
                 print(f"⚠️ Erro ao processar pós-comentário (AddComment): {e}")
                 traceback.print_exc()
-
-        return comment_id is not None
 
         return comment_id is not None
 

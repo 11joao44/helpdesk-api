@@ -38,7 +38,7 @@ class WebhookService:
 
         # --- 2. Roteamento do Evento ---
         try:
-            print(f"🔄 Recebido: {event} | ID: {object_id}")
+           # print(f"🔄 Recebido: {event} | ID: {object_id}")
 
             # Rota de NEGÓCIOS
             if event in ["ONCRMDEALADD", "ONCRMDEALUPDATE"]:
@@ -50,7 +50,7 @@ class WebhookService:
                 await self._sync_activity(object_id)
                 await self.activity_repo.session.commit() # Confirma transação da Activity
 
-            print(f"✅ Sucesso: {event} | ID: {object_id}")
+           # print(f"✅ Sucesso: {event} | ID: {object_id}")
 
         except Exception as e:
             # Em caso de erro, faz rollback na sessão correta
@@ -95,7 +95,7 @@ class WebhookService:
 
     async def _sync_timeline_for_deal(self, bitrix_deal_id: int):
         """Busca comentários da timeline e sincroniza com base local."""
-        print(f"🔄 Sincronizando timeline do Deal {bitrix_deal_id}...")
+        # print(f"🔄 Sincronizando timeline do Deal {bitrix_deal_id}...")
         
         # 1. Busca comentários no Bitrix
         comments_list = await self.bitrix.list_timeline_comments(bitrix_deal_id)
@@ -208,6 +208,7 @@ class WebhookService:
 
     async def _sync_activity(self, activity_id: int):
         raw = await self.bitrix.get_activity(activity_id)
+        print("Row DESCRIPTION: ",  raw.get("DESCRIPTION"))
         if not raw: return
 
         # 1. Valida se é Deal (Type 2)
@@ -223,7 +224,6 @@ class WebhookService:
         if not internal_deal_id:
             print(f"⚠️ Pai não encontrado. Sincronizando Deal {bitrix_deal_id}...")
             await self._sync_deal(bitrix_deal_id)
-            # Tenta buscar de novo
             internal_deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
             
             if not internal_deal_id: 

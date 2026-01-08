@@ -17,7 +17,6 @@ class StorageProvider:
         # FALLBACK: Se o endpoint for o do usuário e não tiver porta, adiciona 8086
         if "carvalima-teste.duckdns.org" in endpoint and ":" not in endpoint:
             endpoint = f"{endpoint}:8086"
-            print(f"⚠️ [MinIO] Porta ausente no .env. Forçando :8086 para compatibilidade.")
 
         if not endpoint:
             # Se não houver endpoint, o MinIO gera URLs quebradas tipo https:///bucket...
@@ -31,7 +30,6 @@ class StorageProvider:
         
 
         self.endpoint = endpoint
-        print(f"🔌 [MinIO] Endpoint Configurado: '{endpoint}' (Secure=True)")
 
         self.client = Minio(
             endpoint=endpoint,

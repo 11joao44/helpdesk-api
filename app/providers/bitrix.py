@@ -197,11 +197,11 @@ class BitrixProvider:
         return int(result) if result else None
 
     async def get_deal(self, deal_id: int) -> Optional[Dict[str, Any]]:
-        print(f"📡 [Provider] Buscando Deal {deal_id}...")
+        # print(f"📡 [Provider] Buscando Deal {deal_id}...")
         return await self._call_bitrix("crm.deal.get", params={"id": deal_id})
 
     async def get_responsible(self, ASSIGNED_BY_ID: int) -> Optional[Dict[str, Any]]:
-        print(f"📡 [Provider] Buscando Responsável ID {ASSIGNED_BY_ID}...")
+        # print(f"📡 [Provider] Buscando Responsável ID {ASSIGNED_BY_ID}...")
         users_list = await self._call_bitrix("user.get", params={"ID": ASSIGNED_BY_ID})
 
         # Segurança: Verifica se voltou algo
@@ -217,7 +217,7 @@ class BitrixProvider:
         }
 
     async def get_activity(self, activity_id: int) -> Optional[Dict[str, Any]]:
-        print(f"📡 [Provider] Buscando Atividade {activity_id}...")
+        # print(f"📡 [Provider] Buscando Atividade {activity_id}...")
         return await self._call_bitrix("crm.activity.get", params={"id": activity_id})
 
     async def list_timeline_comments(self, deal_id: int) -> list:
@@ -227,7 +227,7 @@ class BitrixProvider:
         # Na verdade, comentários de timeline costumam ser atividades com provider ID específico ou método próprio.
         # Porém, a API oficial sugere crm.timeline.comment.list
         
-        print(f"📡 [Provider] Listando comentários da timeline do Deal {deal_id}...")
+        # print(f"📡 [Provider] Listando comentários da timeline do Deal {deal_id}...")
         results = await self._call_bitrix(
             "crm.timeline.comment.list",
             json_body={
@@ -244,7 +244,7 @@ class BitrixProvider:
 
     async def list_activities(self, deal_id: int) -> list:
         """Lista todas as atividades de um Deal."""
-        print(f"📡 [Provider] Listando atividades do Deal {deal_id}...")
+        # print(f"📡 [Provider] Listando atividades do Deal {deal_id}...")
         results = await self._call_bitrix(
             "crm.activity.list",
             json_body={
