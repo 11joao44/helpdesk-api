@@ -12,7 +12,7 @@ class ConnectionManager:
         if deal_id not in self.active_connections:
             self.active_connections[deal_id] = []
         self.active_connections[deal_id].append(websocket)
-        logger.info(f"🔌 WebSocket conectado no Deal {deal_id}. Total: {len(self.active_connections[deal_id])}")
+        logger.info(f"🔌 WebSocket conectado na sala {deal_id}. Total: {len(self.active_connections[deal_id])}")
 
     def disconnect(self, websocket: WebSocket, deal_id: str):
         if deal_id in self.active_connections:
