@@ -99,7 +99,8 @@ class WebhookService:
         
         # 1. Busca comentários no Bitrix
         comments_list = await self.bitrix.list_timeline_comments(bitrix_deal_id)
-        
+        print(f"🔎 [SyncTimeline] Deal {bitrix_deal_id} retornou {len(comments_list)} comentários.")
+
         # Para cada comentário, tenta salvar como Activity
         for comm in comments_list:
             # comm ex: {'ID': '177369', 'CREATED': '2026-01-07T21:40:05+03:00', 'AUTHOR_ID': '36', 'COMMENT': 'Lorem ipsum', 'FILES': {...}}
@@ -108,6 +109,7 @@ class WebhookService:
             existing = await self.activity_repo.get_by_activity_id(comm_id_int)
             
             if existing:
+                print(f"⏭️ [SyncTimeline] Comentário {comm_id_int} já existe. Pulando.")
                 continue # Já temos, pula (ou poderia atualizar se quisesse editar)
                 
             print(f"📥 Importando novo comentário {comm_id_int} do Bitrix...")
