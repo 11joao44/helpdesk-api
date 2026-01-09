@@ -49,9 +49,6 @@ class WebhookService:
             # Rota de ATIVIDADES
             elif event in ["ONCRMACTIVITYADD", "ONCRMACTIVITYUPDATE"]:
                 await self._sync_activity(object_id)
-                # await self.activity_repo.session.commit() # Commit movido para dentro do _sync
-
-           # print(f"✅ Sucesso: {event} | ID: {object_id}")
 
         except Exception as e:
             # Em caso de erro, faz rollback na sessão correta
@@ -194,11 +191,18 @@ class WebhookService:
             
             # Recarrega do banco para pegar relacionamentos novos
             saved = await self.activity_repo.get_by_activity_id(activity.activity_id)
+            print("🚀 Activity salva:", saved)
             if not saved: return # Safety check
             
             schema = ActivitySchema.model_validate(saved)
             
             payload = schema.model_dump(mode='json')
+            
+            # Injeta ID do Bitrix no payload para o Front reconhecer
+            payload["bitrix_deal_id"] = bitrix_deal_id
+            print("🚀 Payload:", payload)
+            print("🚀 Deal ID:", deal_id)
+            print("🚀 Bitrix Deal ID:", bitrix_deal_id)
 
             await manager.broadcast(
                 message={"type": "NEW_ACTIVITY", "payload": payload},
