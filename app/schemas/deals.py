@@ -32,6 +32,17 @@ class DealCardCreateSchema(BaseModel):
         from_attributes = True
 
 
+class DealFileSchema(BaseModel):
+    id: int
+    bitrix_file_id: Optional[int] = None
+    file_url: Optional[str] = None
+    filename: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class DealCardSchema(DealCardCreateSchema):
     modify_by_id: Optional[str]
     moved_by_id: Optional[str]
@@ -53,6 +64,7 @@ class DealCardSchema(DealCardCreateSchema):
     requester_profile_picture_url: Optional[str] = None
     file_url: Optional[str] = None
     file_id: Optional[int] = None
+    files: List[DealFileSchema] = []
     activities: List[ActivitySchema] = []
 
     # Campo oculto para carregar dados do relacionamento (não vai para o JSON final)

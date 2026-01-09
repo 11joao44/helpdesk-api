@@ -13,7 +13,10 @@ class DealRepository:
     async def get_deals_for_kanban(self):
         stmt = (
             select(DealModel)
-            .options(selectinload(DealModel.activities).selectinload(ActivityModel.files))
+            .options(
+                selectinload(DealModel.activities).selectinload(ActivityModel.files),
+                selectinload(DealModel.files)
+            )
             .order_by(DealModel.created_at.desc())
         )
         
@@ -28,6 +31,7 @@ class DealRepository:
             .options(
                 selectinload(DealModel.user),
                 selectinload(DealModel.responsible_user_rel),
+                selectinload(DealModel.files)
             )
         )
         return result.scalar_one_or_none()
@@ -41,7 +45,8 @@ class DealRepository:
                 selectinload(DealModel.user),
                 selectinload(DealModel.responsible_user_rel),
                 selectinload(DealModel.activities).selectinload(ActivityModel.files),
-                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user)
+                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user),
+                selectinload(DealModel.files)
             )
             .order_by(DealModel.created_at.desc())
         )
@@ -57,7 +62,8 @@ class DealRepository:
                 selectinload(DealModel.user),
                 selectinload(DealModel.responsible_user_rel),
                 selectinload(DealModel.activities).selectinload(ActivityModel.files),
-                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user)
+                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user),
+                selectinload(DealModel.files)
             )
             .order_by(DealModel.created_at.desc())
         )
@@ -74,7 +80,8 @@ class DealRepository:
                 selectinload(DealModel.user),
                 selectinload(DealModel.responsible_user_rel),
                 selectinload(DealModel.activities).selectinload(ActivityModel.files),
-                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user)
+                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user),
+                selectinload(DealModel.files)
             )
             .order_by(DealModel.created_at.desc())
         )
@@ -132,11 +139,42 @@ class DealRepository:
                 selectinload(DealModel.user),
                 selectinload(DealModel.responsible_user_rel),
                 selectinload(DealModel.activities).selectinload(ActivityModel.files),
-                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user)
+                selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user),
+                selectinload(DealModel.files)
             )
             .order_by(DealModel.created_at.desc())
         )
         
         result = await self.session.execute(query)
         return result.scalars().all()
+
+    async def add_files(self, deal_internal_id: int, files_data: list[dict]):
+        """Adiciona arquivos a um Deal (ID Interno)"""
+        if not files_data: return
+
+        from app.models.deal_files import DealFileModel
+
+        for f in files_data:
+            # Garante que o deal_id interno está correto
+            f["deal_id"] = deal_internal_id
+            
+            # Verifica duplicidade simples (pelo bitrix_file_id ou URL)
+            stmt = select(DealFileModel).where(DealFileModel.deal_id == deal_internal_id)
+            
+            if f.get("bitrix_file_id"):
+                stmt = stmt.where(DealFileModel.bitrix_file_id == f["bitrix_file_id"])
+            elif f.get("file_url"):
+                 stmt = stmt.where(DealFileModel.file_url == f["file_url"])
+            else:
+                # Se não tem nem ID nem URL, pula
+                continue
+
+            existing = await self.session.execute(stmt)
+            if existing.scalar_one_or_none():
+                continue
+
+            new_file = DealFileModel(**f)
+            self.session.add(new_file)
+            
+        await self.session.flush()
 

@@ -58,6 +58,12 @@ class DealModel(Base):
         cascade="all, delete-orphan" 
     )
 
+    files: Mapped[List["DealFileModel"]] = relationship(
+        "DealFileModel", 
+        back_populates="deal",
+        cascade="all, delete-orphan" 
+    )
+
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     user: Mapped[Optional["UserModel"]] = relationship("app.models.users.UserModel", back_populates="deals", foreign_keys=[user_id])
 

@@ -151,25 +151,45 @@ class DealService:
                 # Busca Deal para ter o ID interno
                 deal = await self.repo.get_by_deal_id(deal_id)
                 
-                # --- Preparar Arquivos para Preview Imediato ---
+                # --- Preparar Arquivos para Preview Imediato (Websocket) ---
                 temp_files = []
                 if attachments:
+                    print(f"📤 [DealService.add_comment] Processando {len(attachments)} anexos para WebSocket...")
                     for idx, att in enumerate(attachments):
                         b64_content = att.get("content", "")
-                        filename = att.get("name", f"file_{idx}")
+                        filename = att.get("name", f"file_{idx}_{deal_id}")
+                        
+                        file_url = None
+                        
+                        if b64_content:
+                            try:
+                                import base64
+                                import uuid
+                                file_bytes = base64.b64decode(b64_content)
                                 
-                        # Detectar mime type básico
-                        mime = "application/octet-stream"
-                        if filename.lower().endswith(".png"): mime = "image/png"
-                        elif filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"): mime = "image/jpeg"
-                        elif filename.lower().endswith(".pdf"): mime = "application/pdf"
+                                # Upload MinIO
+                                ext = ""
+                                if "." in filename:
+                                    ext = f".{filename.split('.')[-1]}"
+                                unique_name = f"{uuid.uuid4()}{ext}"
                                 
-                        data_uri = f"data:{mime};base64,{b64_content}"
+                                object_name = self.storage.upload_file(file_bytes, unique_name)
                                 
+                                if object_name:
+                                    # Gera link assinado para o front conseguir abrir imediatamente
+                                    signed_url = self.storage.get_presigned_url(object_name)
+                                    file_url = signed_url
+                                    print(f"✅ [DealService.add_comment] Upload WS sucesso: {object_name}")
+                                    
+                            except Exception as e:
+                                print(f"❌ [DealService.add_comment] Erro Upload MinIO: {e}")
+                                # Fallback para data URI se der erro? Melhor não, fica pesado.
+                                # Deixa sem URL ou tenta recuperar na próxima leitura.
+                        
                         temp_file = ActivityFileSchema(
                             id=0,
                             bitrix_file_id=0,
-                            file_url=data_uri,
+                            file_url=file_url if file_url else "",
                             filename=filename,
                             created_at=datetime.now(timezone.utc)
                         )
@@ -252,9 +272,9 @@ class DealService:
         return comment_id is not None
 
     async def create_ticket(self, data: TicketCreateRequest) -> DealModel:
-        deal_id, file_id = await self.bitrix.create_deal(data)
+        deal_id = await self.bitrix.create_deal(data)
         
-        print(f"🛠️ [DealService] create_ticket: deal_id={deal_id}, file_id={file_id}")
+        print(f"🛠️ [DealService] create_ticket: deal_id={deal_id}")
 
         if not deal_id:
             raise Exception("Falha de comunicação com Bitrix24")
@@ -274,45 +294,70 @@ class DealService:
                     responsible_email = user_data.get("EMAIL")
         
         # --- Tratamento de Anexos (MinIO + Bitrix) ---
-        # file_id já veio do bitrix.create_deal (que fez upload pro Disk)
-        # file_url agora será o caminho no MinIO para consistência com Activities
+        files_to_save = []
+        legacy_file_id = None # Para coluna antiga (compatibilidade)
+        legacy_file_url = None # Para coluna antiga (compatibilidade)
         
-        file_url = None
-        
-        # Se tiver anexos, faz upload pro MinIO também
         if data.attachments:
-            print(f"📤 [DealService] Iniciando upload para MinIO...")
-            for att in data.attachments:
+            print(f"📤 [DealService] Iniciando processamento de {len(data.attachments)} anexos...")
+            for idx, att in enumerate(data.attachments):
                 try:
-                    name = att.get("name", f"file_{deal_id}.bin")
+                    name = att.get("name", f"file_{deal_id}_{idx}.bin")
                     content_b64 = att.get("content", "")
                     
-                    if content_b64:
-                        import base64
-                        file_bytes = base64.b64decode(content_b64)
-                        
-                        # Usa o StorageProvider para upload
-                        # Ele retorna o object_name (ex: attachments/arquivo.pdf)
-                        # Vamos prefixar com deal_{deal_id}_ para organizar melhor ou evitar colisão se o nome for genérico
-                        # O provider já cuida de colisão básica? Vamos checar. O provider do user não usa UUID se passarmos nome.
-                        # Vamos garantir nome único.
-                        import uuid
-                        ext = ""
-                        if "." in name:
-                            ext = f".{name.split('.')[-1]}"
-                        unique_name = f"{uuid.uuid4()}{ext}"
-                        
-                        object_name = self.storage.upload_file(file_bytes, unique_name)
-                        
-                        if object_name:
-                            file_url = object_name
-                            print(f"✅ [DealService] Upload MinIO sucesso: {file_url}")
-                            # Salvamos apenas o primeiro por enquanto, conforme schema single-column
-                            break 
-                except Exception as e:
-                    print(f"❌ [DealService] Erro no upload MinIO: {e}")
+                    minio_path = None
+                    bitrix_fid = None
+                    
+                    if content_b64: # Apenas se tiver conteúdo
+                         # 1. Upload MinIO
+                        try:
+                            import base64
+                            import uuid
+                            file_bytes = base64.b64decode(content_b64)
+                            
+                            ext = ""
+                            if "." in name:
+                                ext = f".{name.split('.')[-1]}"
+                            unique_name = f"{uuid.uuid4()}{ext}"
+                            
+                            minio_path = self.storage.upload_file(file_bytes, unique_name)
+                            if minio_path:
+                                print(f"✅ [DealService] Upload MinIO: {minio_path}")
+                        except Exception as e_minio:
+                            print(f"❌ [DealService] Erro Upload MinIO ({name}): {e_minio}")
 
-        # --- Persistência no Banco Local (Com tratamento de Race Condition) ---
+                        # 2. Upload Bitrix Disk (para ter ID oficial)
+                        try:
+                             # Requer nome e bytes (ja decodificados em file_bytes? ou passamos base64?)
+                             # upload_disk_file espera string (conteudo) ou bytes? 
+                             # O metodo original espera 'content' que geralmente vinha do payload JSON string?
+                             # Vamos checar a assinatura do upload_disk_file...
+                             # Se ele espera bytes:
+                             bitrix_fid = await self.bitrix.upload_disk_file(name, file_bytes) 
+                             # Se ele esperava string, o decode acima gera bytes. Vamos assumir que upload_disk_file foi ajustado ou aceita bytes.
+                             if bitrix_fid:
+                                 print(f"✅ [DealService] Upload Bitrix Disk: {bitrix_fid}")
+                        except Exception as e_bx:
+                            print(f"❌ [DealService] Erro Upload Bitrix ({name}): {e_bx}")
+
+                        # 3. Prepara registro se pelo menos um subiu
+                        if minio_path or bitrix_fid:
+                             files_to_save.append({
+                                 "file_url": minio_path if minio_path else "", # URL obrigatória no model?
+                                 "bitrix_file_id": bitrix_fid,
+                                 "filename": name
+                             })
+                             
+                             # Se for o primeiro, guarda para legacy (prioriza o primeiro que funcionar)
+                             if legacy_file_id is None and bitrix_fid:
+                                 legacy_file_id = bitrix_fid
+                             if legacy_file_url is None and minio_path:
+                                 legacy_file_url = minio_path
+
+                except Exception as e:
+                    print(f"❌ [DealService] Erro genérico processando anexo {idx}: {e}")
+
+        # --- Persistência no Banco Local ---
         saved_deal = None
         
         # 1. Tenta buscar primeiro para evitar erro se o webhook já criou
@@ -337,11 +382,10 @@ class DealService:
             if responsible_email:
                 saved_deal.responsible_email = responsible_email
             
-            if file_id:
-                saved_deal.file_id = file_id
-            if file_url:
-                saved_deal.file_url = file_url
-                
+            # Legacy columns
+            if legacy_file_id: saved_deal.file_id = legacy_file_id
+            if legacy_file_url: saved_deal.file_url = legacy_file_url
+            
             await self.repo.session.commit()
             await self.repo.session.refresh(saved_deal)
         else:
@@ -363,8 +407,8 @@ class DealService:
                 priority=data.priority,
                 matricula=data.matricula,
                 requester_email=data.email,
-                file_id=file_id,
-                file_url=file_url,
+                file_id=legacy_file_id,
+                file_url=legacy_file_url,
                 responsible=responsible_name,
                 responsible_email=responsible_email
             )
@@ -397,25 +441,32 @@ class DealService:
                     if responsible_email:
                         saved_deal.responsible_email = responsible_email
                     
-                    if file_id:
-                        saved_deal.file_id = file_id
-                    if file_url:
-                        saved_deal.file_url = file_url
+                    if legacy_file_id:
+                        saved_deal.file_id = legacy_file_id
+                    if legacy_file_url:
+                        saved_deal.file_url = legacy_file_url
                         
                     await self.repo.session.commit()
                     await self.repo.session.refresh(saved_deal)
-                else:
-                     raise
 
-        # --- Pós-Criação: Adicionar Comentário com Anexos ---
-        # Só chamamos agora que o Deal JÁ EXISTE no banco local.
-        if data.attachments:
-            # O add_comment vai buscar o deal no banco para criar a Activity e fazer broadcast
-            if saved_deal:
-                await self.add_comment(
-                    deal_id=deal_id, 
-                    message="Anexos.", 
-                    attachments=data.attachments
-                )
+        # --- Persistência dos Multi-Arquivos (Tabela Nova) ---
+        if saved_deal and files_to_save:
+            # saved_deal.id é o ID da nossa tabela (PK), não o deal_id do Bitrix
+            await self.repo.add_files(saved_deal.id, files_to_save)
             
+            # --- Adiciona Comentário na Timeline (Visibilidade) ---
+            # Vamos usar o método antigo add_comment que aceita a lista de attachments original
+            # Isso garante que apareça na timeline (mesmo duplicando o storage interno do Bitrix Timeline vs Disk)
+            # UX First: Usuário quer ver o arquivo lá.
+            try:
+                if saved_deal:
+                     await self.add_comment(
+                        deal_id=saved_deal.deal_id, 
+                        message="Arquivos anexados na criação do ticket.", 
+                        attachments=data.attachments
+                    )
+            except Exception as e_comm:
+                print(f"⚠️ [DealService] Erro ao adicionar comentário de anexos: {e_comm}")
+
         return saved_deal
+

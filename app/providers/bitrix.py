@@ -149,10 +149,10 @@ class BitrixProvider:
                 print(f"❌ [Bitrix] Erro no upload para disk: {e}")
                 return None
 
-    async def create_deal(self, data: TicketCreateRequest) -> tuple[int | None, int | None]:
+    async def create_deal(self, data: TicketCreateRequest) -> int | None:
         """
         Cria o Negócio traduzindo os campos do Front para o Bitrix.
-        Retorna (deal_id, file_id) onde file_id é o ID do primeiro anexo no Bitrix Disk (se houver).
+        Retorna deal_id.
         """
 
         contact_id = await self.get_or_create_contact(
@@ -161,18 +161,7 @@ class BitrixProvider:
 
         if not contact_id:
             print(f"❌ [Bitrix] Falha ao obter Contact ID para {data.email}. Abortando criação do Deal.")
-            return None, None
-
-        # --- Tratamento de Anexos (Upload Prévio) ---
-        uploaded_file_ids = []
-        if data.attachments:
-            for att in data.attachments:
-                f_name = att.get("name", "arquivo.bin")
-                f_content = att.get("content", "")
-                if f_content:
-                    fid = await self.upload_disk_file(f_name, f_content)
-                    if fid:
-                        uploaded_file_ids.append(fid)
+            return None
 
         dept_id_bitrix = BitrixValues.get_id(
             BitrixValues.DEPARTAMENTOS, data.assignee_department
@@ -185,6 +174,7 @@ class BitrixProvider:
         )
 
         descricao_completa = (
+            f"Chamado vindo do Portal HelpDesk\n\n"
             f"{data.description}\n\n"
             f"# Detalhes Adicionais\n"
             f"Solicitante: {data.full_name} (Matrícula: {data.matricula})\n"
@@ -196,7 +186,7 @@ class BitrixProvider:
             "fields": {
                 "TITLE": data.title,
                 "TYPE_ID": "SALE",
-                "STAGE_ID": "C25:NEW",  # ID da etapa "Novo" no seu funil
+                "STAGE_ID": "C25:NEW",
                 "OPENED": "Y",
                 "CATEGORY_ID": 25,
                 "CURRENCY_ID": "BRL",
@@ -229,44 +219,10 @@ class BitrixProvider:
 
         if result: 
             deal_id = int(result)
-            
-            # Se tivermos arquivos carregados, vinculamos ao Deal via Comentário (Timeline)
-            # MAS usando os IDs de arquivo do Disk, o que é mais robusto
-            if uploaded_file_ids:
-                # O método timeline.comment.add com FILES aceita array de "id" se for do Disk?
-                # A documentação padrão aceita base64 em FILES. Para linkar arquivo do disk geralmente é via attachment_id.
-                # Mas para garantir visibilidade e link simples, podemos continuar usando o método antigo de base64 
-                # OU apenas postar uma nota "Arquivos Anexados: [Link]".
-                #
-                # O usuário pediu especificamente "na criação do deal ... criar uma coluna file_id".
-                # O create_deal original não tem campo file, então o comentário é a via.
-                #
-                # Vamos manter o add_comment original (base64) para garantir visualização timeline como antes,
-                # POIS o upload para disk foi "extra" apenas para obter o ID persistente solicitado.
-                # Se usarmos add_comment normal, ele cria OUTRO arquivo interno.
-                #
-                # Melhor: Usar os arquivos já upados.
-                # crm.timeline.comment.add aceita "FILES" => [{"id": disk_file_id}] ? Não documentado claramente.
-                #
-                # VAMOS REUSAR O add_comment EXISTENTE (que usa base64) para garantir UX,
-                # E retornar o primeiro ID do upload "manual" que fizemos para salvar no banco.
-                # Isso duplica o arquivo (um no disk solto, um no comentário), mas atende o requisito de ter um ID "confiável"
-                # E garante a visualização.
-                
-                # Para não duplicar visualmente o esforço, apenas chamamos o add_comment se o usuário quiser.
-                # Mas como já upamos para pegar o ID, podemos tentar comentar COM o anexo do disk se descoberta a sintaxe.
-                # Por segurança/tempo: Deixamos o DealService chamar o add_comment (que faz o broadcast e tudo mais).
-                # AQUI nós só retornamos o ID do arquivo "principal" que upamos para o banco.
-                pass
-            
-            # Retorna (Deal ID, File ID do primeiro anexo)
-            first_file_id = uploaded_file_ids[0] if uploaded_file_ids else None
-            
-            print(f"✅ [Bitrix] Deal criado: {deal_id}. File IDs: {uploaded_file_ids}. Returning: {first_file_id}")
-            
-            return deal_id, first_file_id
+            print(f"✅ [Bitrix] Deal criado: {deal_id}")
+            return deal_id
 
-        return None, None
+        return None
 
 
 

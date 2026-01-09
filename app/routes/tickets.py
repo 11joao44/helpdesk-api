@@ -29,6 +29,17 @@ def _sign_deals(deals: List, storage: StorageProvider):
         if hasattr(deal, "user") and deal.user and deal.user.profile_picture:
              deal.requester_profile_picture_url = storage.get_presigned_url(deal.user.profile_picture, expiration_hours=168)
 
+        if hasattr(deal, "files") and deal.files:
+             for f in deal.files:
+                 if f.file_url and not f.file_url.startswith("http"):
+                     signed_f_url = storage.get_presigned_url(f.file_url)
+                     if signed_f_url:
+                         f.file_url = signed_f_url
+
+        # 3. Tratamento para campo legado (deal.file_url)
+        if hasattr(deal, "file_url") and deal.file_url and not deal.file_url.startswith("http"):
+             deal.file_url = storage.get_presigned_url(deal.file_url)
+
         for activity in deal.activities:
             # --- Activity Responsible Avatar ---
             if hasattr(activity, "responsible_user") and activity.responsible_user and activity.responsible_user.profile_picture:
