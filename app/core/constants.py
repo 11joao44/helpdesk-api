@@ -17,6 +17,7 @@ class BitrixFields:
     SISTEMA       = "UF_CRM_67C9AA4AEA56A"
     PRIORIDADE    = "UF_CRM_1763744705"
     CATEGORIA     = "UF_CRM_1763995291"
+    PORTAL        = "UF_CRM_1767887868"
     
     # Outros
     CLIENT_PHONE  = "UF_CRM_617728A6C16A5" # Verificar se é este mesmo
@@ -49,6 +50,13 @@ class BitrixValues:
         "Normal": "1561",
         "Baixo/Planejado": "1563",
         "Baixo": "1563"
+    }
+
+    PORTAL = {
+        "E-mail": "1977",
+        "Whatsapp": "1979",
+        "Portal": "1981",
+        "Sistema Próprio": "1983"
     }
 
     SISTEMAS = {

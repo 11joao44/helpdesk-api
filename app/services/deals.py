@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.deals import DealModel
 from app.providers.bitrix import BitrixProvider
+from app.providers.storage import StorageProvider
 from app.repositories.deals import DealRepository
 from app.schemas.tickets import TicketCloseRequest, TicketCreateRequest, TicketSendEmail
 
@@ -12,6 +13,7 @@ class DealService:
         # Instanciamos o provider aqui ou recebemos via injeção
         self.repo = DealRepository(session)
         self.bitrix = BitrixProvider()
+        self.storage = StorageProvider()
 
     async def close_ticket(self, data: TicketCloseRequest):
         provider = BitrixProvider()
@@ -250,57 +252,170 @@ class DealService:
         return comment_id is not None
 
     async def create_ticket(self, data: TicketCreateRequest) -> DealModel:
-        deal_id = await self.bitrix.create_deal(data)
+        deal_id, file_id = await self.bitrix.create_deal(data)
+        
+        print(f"🛠️ [DealService] create_ticket: deal_id={deal_id}, file_id={file_id}")
 
         if not deal_id:
             raise Exception("Falha de comunicação com Bitrix24")
+
+        # --- Busca Detalhes Ricos do Deal no Bitrix (Responsible, etc) ---
+        bitrix_deal_data = await self.bitrix.get_deal(deal_id)
         
-        # Tenta buscar primeiro para evitar erro se o webhook já criou
+        responsible_name = "N/A"
+        responsible_email = None
+        
+        if bitrix_deal_data:
+            assigned_id = bitrix_deal_data.get("ASSIGNED_BY_ID")
+            if assigned_id:
+                user_data = await self.bitrix.get_user(assigned_id)
+                if user_data:
+                    responsible_name = f"{user_data.get('NAME', '')} {user_data.get('LAST_NAME', '')}".strip()
+                    responsible_email = user_data.get("EMAIL")
+        
+        # --- Tratamento de Anexos (MinIO + Bitrix) ---
+        # file_id já veio do bitrix.create_deal (que fez upload pro Disk)
+        # file_url agora será o caminho no MinIO para consistência com Activities
+        
+        file_url = None
+        
+        # Se tiver anexos, faz upload pro MinIO também
+        if data.attachments:
+            print(f"📤 [DealService] Iniciando upload para MinIO...")
+            for att in data.attachments:
+                try:
+                    name = att.get("name", f"file_{deal_id}.bin")
+                    content_b64 = att.get("content", "")
+                    
+                    if content_b64:
+                        import base64
+                        file_bytes = base64.b64decode(content_b64)
+                        
+                        # Usa o StorageProvider para upload
+                        # Ele retorna o object_name (ex: attachments/arquivo.pdf)
+                        # Vamos prefixar com deal_{deal_id}_ para organizar melhor ou evitar colisão se o nome for genérico
+                        # O provider já cuida de colisão básica? Vamos checar. O provider do user não usa UUID se passarmos nome.
+                        # Vamos garantir nome único.
+                        import uuid
+                        ext = ""
+                        if "." in name:
+                            ext = f".{name.split('.')[-1]}"
+                        unique_name = f"{uuid.uuid4()}{ext}"
+                        
+                        object_name = self.storage.upload_file(file_bytes, unique_name)
+                        
+                        if object_name:
+                            file_url = object_name
+                            print(f"✅ [DealService] Upload MinIO sucesso: {file_url}")
+                            # Salvamos apenas o primeiro por enquanto, conforme schema single-column
+                            break 
+                except Exception as e:
+                    print(f"❌ [DealService] Erro no upload MinIO: {e}")
+
+        # --- Persistência no Banco Local (Com tratamento de Race Condition) ---
+        saved_deal = None
+        
+        # 1. Tenta buscar primeiro para evitar erro se o webhook já criou
         existing_deal = await self.repo.get_by_deal_id(deal_id)
         if existing_deal:
-            # Atualiza campos importantes que o webhook pode não ter setado (ex: user_id)
-            existing_deal.user_id = data.user_id
-            existing_deal.created_by_id = data.resp_id
-            existing_deal.matricula = data.matricula
-            await self.repo.session.commit()
-            await self.repo.session.refresh(existing_deal)
-            return existing_deal
+            saved_deal = existing_deal
+            # Atualiza TODOS os campos, pois o webhook cria 'seco'
+            saved_deal.user_id = data.user_id
+            saved_deal.created_by_id = data.resp_id
+            saved_deal.matricula = data.matricula
+            saved_deal.requester_department = data.requester_department
+            saved_deal.assignee_department = data.assignee_department
+            saved_deal.service_category = data.service_category
+            saved_deal.system_type = data.system_type
+            saved_deal.priority = data.priority
+            saved_deal.requester_email = data.email
+            saved_deal.description = data.description 
             
-        new_deal = DealModel(
-            deal_id=deal_id,
-            user_id=data.user_id,
-            title=f"[{datetime.now().strftime('%Y%m%d')}{deal_id}] {data.title}",
-            description=data.description,
-            stage_id="C25:NEW",
-            opened="Y",
-            closed="N",
-            begin_date=datetime.now(),
-            created_by_id=data.resp_id,
-            requester_department=data.requester_department,
-            assignee_department=data.assignee_department,
-            service_category=data.service_category,
-            system_type=data.system_type,
-            priority=data.priority,
-            matricula=data.matricula,
-            requester_email=data.email,
-        )
-
-        try:
-            self.repo.session.add(new_deal)
+            # Atualiza Responsible e File Info
+            if responsible_name != "N/A":
+                saved_deal.responsible = responsible_name
+            if responsible_email:
+                saved_deal.responsible_email = responsible_email
+            
+            if file_id:
+                saved_deal.file_id = file_id
+            if file_url:
+                saved_deal.file_url = file_url
+                
             await self.repo.session.commit()
-            await self.repo.session.refresh(new_deal)
-            return new_deal
-        except IntegrityError:
-            # Race condition: Webhook criou o deal milissegundos antes
-            await self.repo.session.rollback()
-            existing_deal = await self.repo.get_by_deal_id(deal_id)
-            if existing_deal:
-                existing_deal.user_id = data.user_id
-                existing_deal.created_by_id = data.resp_id
-                existing_deal.matricula = data.matricula
+            await self.repo.session.refresh(saved_deal)
+        else:
+            # 2. Tenta criar novo
+            new_deal = DealModel(
+                deal_id=deal_id,
+                user_id=data.user_id,
+                title=f"[{datetime.now().strftime('%Y%m%d')}{deal_id}] {data.title}",
+                description=data.description,
+                stage_id="C25:NEW",
+                opened="Y",
+                closed="N",
+                begin_date=datetime.now(),
+                created_by_id=data.resp_id,
+                requester_department=data.requester_department,
+                assignee_department=data.assignee_department,
+                service_category=data.service_category,
+                system_type=data.system_type,
+                priority=data.priority,
+                matricula=data.matricula,
+                requester_email=data.email,
+                file_id=file_id,
+                file_url=file_url,
+                responsible=responsible_name,
+                responsible_email=responsible_email
+            )
+
+            try:
+                self.repo.session.add(new_deal)
                 await self.repo.session.commit()
-                await self.repo.session.refresh(existing_deal)
-                return existing_deal
-            else:
-                # Se falhou por outro motivo que não duplicate (pouco provável para deal_id)
-                raise
+                await self.repo.session.refresh(new_deal)
+                saved_deal = new_deal
+            except IntegrityError:
+                # Race condition: Webhook criou o deal milissegundos antes
+                await self.repo.session.rollback()
+                existing_deal = await self.repo.get_by_deal_id(deal_id)
+                if existing_deal:
+                    saved_deal = existing_deal
+                    # Atualiza TODOS os campos novamente
+                    saved_deal.user_id = data.user_id
+                    saved_deal.created_by_id = data.resp_id
+                    saved_deal.matricula = data.matricula
+                    saved_deal.requester_department = data.requester_department
+                    saved_deal.assignee_department = data.assignee_department
+                    saved_deal.service_category = data.service_category
+                    saved_deal.system_type = data.system_type
+                    saved_deal.priority = data.priority
+                    saved_deal.requester_email = data.email
+                    saved_deal.description = data.description
+                    
+                    if responsible_name != "N/A":
+                        saved_deal.responsible = responsible_name
+                    if responsible_email:
+                        saved_deal.responsible_email = responsible_email
+                    
+                    if file_id:
+                        saved_deal.file_id = file_id
+                    if file_url:
+                        saved_deal.file_url = file_url
+                        
+                    await self.repo.session.commit()
+                    await self.repo.session.refresh(saved_deal)
+                else:
+                     raise
+
+        # --- Pós-Criação: Adicionar Comentário com Anexos ---
+        # Só chamamos agora que o Deal JÁ EXISTE no banco local.
+        if data.attachments:
+            # O add_comment vai buscar o deal no banco para criar a Activity e fazer broadcast
+            if saved_deal:
+                await self.add_comment(
+                    deal_id=deal_id, 
+                    message="Anexos.", 
+                    attachments=data.attachments
+                )
+            
+        return saved_deal

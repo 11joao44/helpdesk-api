@@ -51,6 +51,8 @@ class DealCardSchema(DealCardCreateSchema):
     
     requester_name: Optional[str] = None
     requester_profile_picture_url: Optional[str] = None
+    file_url: Optional[str] = None
+    file_id: Optional[int] = None
     activities: List[ActivitySchema] = []
 
     # Campo oculto para carregar dados do relacionamento (não vai para o JSON final)

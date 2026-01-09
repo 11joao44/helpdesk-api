@@ -14,6 +14,7 @@ class TicketCreateRequest(BaseModel):
     email: EmailStr
     filial: str
     phone: str
+    cpf: str
     priority: Optional[str] = "Médio/Normal"
     matricula: str
     requester_department: str

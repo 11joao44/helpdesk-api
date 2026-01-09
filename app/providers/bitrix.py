@@ -50,8 +50,110 @@ class BitrixProvider:
 
         return contacts[0]["ID"]
 
-    async def create_deal(self, data: TicketCreateRequest) -> int | None:
-        """Cria o Negócio traduzindo os campos do Front para o Bitrix"""
+    async def upload_disk_file(self, filename: str, content: str) -> Optional[int]:
+        """Faz upload de um arquivo para o Bitrix Disk (Pasta Raiz do Storage Padrão)"""
+        
+        print(f"📤 [Bitrix] Uploading file {filename} to Disk...")
+        
+        # 1. Obter Storage Padrão para pegar a Pasta Raiz
+        storage_list = await self._call_bitrix("disk.storage.getlist")
+        root_folder_id = None
+        
+        if storage_list and isinstance(storage_list, list) and len(storage_list) > 0:
+            # Pega o primeiro storage (geralmente Arquivos Carregados ou o Drive da Empresa)
+            storage = storage_list[0]
+            # O campo ROOT_OBJECT_ID é a pasta raiz
+            root_folder_id = storage.get("ROOT_OBJECT_ID")
+            print(f"📂 [Bitrix] Storage encontrado. ID: {storage.get('ID')}, Root: {root_folder_id}")
+        else:
+             print(f"⚠️ [Bitrix] Nenhum storage encontrado. Lista: {storage_list}")
+        
+        if not root_folder_id:
+            # Fallback: Tenta um get no storage default explicito se getlist falhar no index 0
+            # Mas vamos assumir que falhou geral
+            print("❌ [Bitrix] Não foi possível encontrar a Pasta Raiz para upload.")
+            return None
+
+        # 2. Upload para a Pasta (disk.folder.uploadfile)
+        # O disk.folder.uploadfile exige 'id' da pasta.
+        # DICA: Para evitar erro 400 em multipart, passamos o ID na Query String.
+        
+        try:
+            file_bytes = base64.b64decode(content)
+        except Exception as e:
+            print(f"❌ [Bitrix] Erro ao decodificar base64 do arquivo: {e}")
+            return None
+
+        # Preparar Multipart
+        files = {'file': (filename, file_bytes)}
+        
+        # URL com Parametros (mais seguro para Bitrix + Multipart)
+        url = f"{self.webhook_url}/disk.folder.uploadfile.json"
+        params = {"id": root_folder_id, "generateUniqueName": "Y"}
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                # Nota: Passamos params para o httpx anexar na URL
+                response = await client.post(
+                    url, 
+                    params=params, 
+                    data={"generateUniqueName": "Y"}, # Redundante mas seguro
+                    files=files, 
+                    timeout=60.0
+                )
+                
+                if response.status_code != 200:
+                     print(f"❌ [Bitrix] Erro HTTP {response.status_code}: {response.text}")
+                     return None
+
+                result = response.json()
+                
+                # Caso 1: Upload Direto (retornou ID)
+                if "result" in result and "ID" in result["result"]:
+                    file_id = result["result"]["ID"]
+                    print(f"✅ [Bitrix] Arquivo salvo no Disk com ID: {file_id}")
+                    return int(file_id)
+                # Caso 2: Upload com Redirecionamento (retornou uploadUrl)
+                elif "result" in result and "uploadUrl" in result["result"]:
+                    upload_url = result["result"]["uploadUrl"]
+                    print(f"🔄 [Bitrix] Recebida uploadUrl. Redirecionando upload para: {upload_url}...")
+                    
+                    # Precisamos reenviar o arquivo para a nova URL
+                    # Recriamos o files pointer
+                    files_retry = {'file': (filename, file_bytes)}
+                    
+                    response_upload = await client.post(
+                        upload_url,
+                        files=files_retry,
+                        timeout=60.0
+                    )
+                    
+                    if response_upload.status_code != 200:
+                        print(f"❌ [Bitrix] Erro HTTP no Redirecionamento {response_upload.status_code}: {response_upload.text}")
+                        return None
+                        
+                    result_upload = response_upload.json()
+                    if "result" in result_upload and "ID" in result_upload["result"]:
+                        file_id = result_upload["result"]["ID"]
+                        print(f"✅ [Bitrix] Arquivo salvo (após redirect) com ID: {file_id}")
+                        return int(file_id)
+                    else:
+                         print(f"⚠️ [Bitrix] Falha no upload secundário: {result_upload}")
+                         return None
+
+                else:
+                    print(f"⚠️ [Bitrix] Upload retornou sucesso mas sem ID nem uploadUrl: {result}")
+                    return None
+                    
+            except Exception as e:
+                print(f"❌ [Bitrix] Erro no upload para disk: {e}")
+                return None
+
+    async def create_deal(self, data: TicketCreateRequest) -> tuple[int | None, int | None]:
+        """
+        Cria o Negócio traduzindo os campos do Front para o Bitrix.
+        Retorna (deal_id, file_id) onde file_id é o ID do primeiro anexo no Bitrix Disk (se houver).
+        """
 
         contact_id = await self.get_or_create_contact(
             data.full_name, data.email, data.service_category, data.phone
@@ -59,7 +161,18 @@ class BitrixProvider:
 
         if not contact_id:
             print(f"❌ [Bitrix] Falha ao obter Contact ID para {data.email}. Abortando criação do Deal.")
-            return None
+            return None, None
+
+        # --- Tratamento de Anexos (Upload Prévio) ---
+        uploaded_file_ids = []
+        if data.attachments:
+            for att in data.attachments:
+                f_name = att.get("name", "arquivo.bin")
+                f_content = att.get("content", "")
+                if f_content:
+                    fid = await self.upload_disk_file(f_name, f_content)
+                    if fid:
+                        uploaded_file_ids.append(fid)
 
         dept_id_bitrix = BitrixValues.get_id(
             BitrixValues.DEPARTAMENTOS, data.assignee_department
@@ -90,13 +203,14 @@ class BitrixProvider:
                 "SOURCE_ID": "SELF",
                 "CONTACT_ID": contact_id,
                 "ASSIGNED_BY_ID": data.resp_id if data.resp_id else "6185",
-                "COMMENTS": descricao_completa,  # Descrição vai na timeline
+                "COMMENTS": descricao_completa,
                 "UF_CRM_6938495549C8A": data.requester_department,
-                BitrixFields.DESCRIPTION: data.description,  # Se tiver um campo custom de texto só para o problema
+                "UF_CRM_1766502007":"1825", # Forma de Criação -> Automática
+                BitrixFields.DESCRIPTION: data.description,
+                BitrixFields.PORTAL: "1981", # Portal
                 BitrixFields.CLIENT_PHONE: data.phone,
-                BitrixFields.PROTOCOL_NUMBER: data.matricula,  # Mapeamos matricula naquele campo de texto
-                # --- Campos de Lista (IDs Mapeados) ---
-                BitrixFields.DEPARTAMENTO: dept_id_bitrix,  # TI, Manutenção, etc.
+                BitrixFields.PROTOCOL_NUMBER: data.matricula,
+                BitrixFields.DEPARTAMENTO: dept_id_bitrix,
                 BitrixFields.FILIAL: filial_id,
                 BitrixFields.PRIORIDADE: prioridade_id,
                 BitrixFields.CATEGORIA: categoria_id,
@@ -109,27 +223,52 @@ class BitrixProvider:
 
         payload["fields"] = {k: v for k, v in payload["fields"].items() if v}
 
-        print(
-            f"🚀 [Bitrix] Criando Deal '{data.title}' para Depto ID: {dept_id_bitrix}"
-        )
+        print(f"🚀 [Bitrix] Criando Deal '{data.title}' para Depto ID: {dept_id_bitrix}")
 
-        result = await self._call_bitrix(
-            "crm.deal.add", json_body=payload, method="POST"
-        )
+        result = await self._call_bitrix("crm.deal.add", json_body=payload, method="POST")
 
-        if result:
+        if result: 
             deal_id = int(result)
+            
+            # Se tivermos arquivos carregados, vinculamos ao Deal via Comentário (Timeline)
+            # MAS usando os IDs de arquivo do Disk, o que é mais robusto
+            if uploaded_file_ids:
+                # O método timeline.comment.add com FILES aceita array de "id" se for do Disk?
+                # A documentação padrão aceita base64 em FILES. Para linkar arquivo do disk geralmente é via attachment_id.
+                # Mas para garantir visibilidade e link simples, podemos continuar usando o método antigo de base64 
+                # OU apenas postar uma nota "Arquivos Anexados: [Link]".
+                #
+                # O usuário pediu especificamente "na criação do deal ... criar uma coluna file_id".
+                # O create_deal original não tem campo file, então o comentário é a via.
+                #
+                # Vamos manter o add_comment original (base64) para garantir visualização timeline como antes,
+                # POIS o upload para disk foi "extra" apenas para obter o ID persistente solicitado.
+                # Se usarmos add_comment normal, ele cria OUTRO arquivo interno.
+                #
+                # Melhor: Usar os arquivos já upados.
+                # crm.timeline.comment.add aceita "FILES" => [{"id": disk_file_id}] ? Não documentado claramente.
+                #
+                # VAMOS REUSAR O add_comment EXISTENTE (que usa base64) para garantir UX,
+                # E retornar o primeiro ID do upload "manual" que fizemos para salvar no banco.
+                # Isso duplica o arquivo (um no disk solto, um no comentário), mas atende o requisito de ter um ID "confiável"
+                # E garante a visualização.
+                
+                # Para não duplicar visualmente o esforço, apenas chamamos o add_comment se o usuário quiser.
+                # Mas como já upamos para pegar o ID, podemos tentar comentar COM o anexo do disk se descoberta a sintaxe.
+                # Por segurança/tempo: Deixamos o DealService chamar o add_comment (que faz o broadcast e tudo mais).
+                # AQUI nós só retornamos o ID do arquivo "principal" que upamos para o banco.
+                pass
+            
+            # Retorna (Deal ID, File ID do primeiro anexo)
+            first_file_id = uploaded_file_ids[0] if uploaded_file_ids else None
+            
+            print(f"✅ [Bitrix] Deal criado: {deal_id}. File IDs: {uploaded_file_ids}. Returning: {first_file_id}")
+            
+            return deal_id, first_file_id
 
-            # Se houver anexos na abertura, cria um comentário com eles
-            if data.attachments:
-                await self._add_comment_with_files(deal_id, data.attachments)
+        return None, None
 
-            return deal_id
-        return None
 
-    async def _add_comment_with_files(self, deal_id: int, attachments: list):
-        """Adiciona um comentário no Deal contendo os arquivos anexados"""
-        return await self.add_comment(deal_id, "Arquivos enviados durante a abertura do chamado.", attachments)
 
     async def add_comment(self, deal_id: int, message: str, attachments: list = []) -> int | None:
         """Adiciona um comentário (com ou sem anexos) na timeline do Deal."""
@@ -375,28 +514,25 @@ class BitrixProvider:
         """Busca metadados de um arquivo no Bitrix Drive (Disk)"""
         return await self._call_bitrix("disk.file.get", params={"id": file_id})
     
-    async def download_disk_file(self, file_id: int) -> Optional[tuple[str, bytes]]:
-        """Baixa um arquivo do Bitrix Disk usando as credenciais do Webhook."""
-        meta = await self.get_disk_file(file_id)
-        
-        if not meta:
-            print(f"⚠️ [Bitrix] Metadados não achados para {file_id}. Cancelando download.")
-            return None
+    async def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Busca dados de um usuário Bitrix pelo ID"""
+        # print(f"📡 [Provider] Buscando Usuário ID {user_id}...")
+        users_list = await self._call_bitrix("user.get", params={"ID": user_id})
 
-        download_url = meta.get("DOWNLOAD_URL")
-        encoded_filename = meta.get("NAME", f"{file_id}.bin")
-        
-        async with httpx.AsyncClient() as client:
-            try:
-                print(f"📥 [Bitrix] Baixando conteúdo do arquivo ID: {file_id}...")
-                response = await client.get(download_url, timeout=60.0)
-                
-                if response.status_code != 200:
-                    print(f"❌ [Bitrix] Falha download ID {file_id}: {response.status_code} - {response.text[:200]}")
-                    return None
-                
-                return encoded_filename, response.content
-                
-            except Exception as e:
-                print(f"❌ [Bitrix] Erro no download disk: {e}")
-                return None
+        if users_list and isinstance(users_list, list) and len(users_list) > 0:
+            return users_list[0]
+            
+        return None
+
+    async def get_file_url(self, file_id: int) -> Optional[str]:
+        """Tenta obter uma URL de visualização/download para o arquivo no Disk"""
+        meta = await self.get_disk_file(file_id)
+        if meta:
+            # Bitrix Disk File object tem DETAIL_URL, DOWNLOAD_URL, etc.
+            # O DOWNLOAD_URL é autenticado, mas o DETAIL_URL é a pagina de visualização interna.
+            # Para download autenticado sem sessão de usuário, precisaríamos proxy ou token.
+            # Vamos salvar o DOWNLOAD_URL que vem na API, que geralmente contém um token temporário ou exige auth.
+            # No entanto, para o uso no front, talvez seja melhor o DETAIL_URL que abre no bitrix.
+            # Mas o usuário pediu File URL. Vamos tentar o DOWNLOAD_URL.
+            return meta.get("DOWNLOAD_URL")
+        return None

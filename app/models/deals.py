@@ -37,6 +37,10 @@ class DealModel(Base):
     # New Foreign Key
     responsible_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
 
+    # Attachments
+    file_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    file_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
         server_default=func.now()
