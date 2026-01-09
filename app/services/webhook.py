@@ -43,8 +43,6 @@ class WebhookService:
             # Rota de NEGÓCIOS
             if event in ["ONCRMDEALADD", "ONCRMDEALUPDATE"]:
                 await self._sync_deal(object_id)
-                await self._sync_deal(object_id)
-                # await self.deal_repo.session.commit() # Commit movido para dentro do _sync
             
             # Rota de ATIVIDADES
             elif event in ["ONCRMACTIVITYADD", "ONCRMACTIVITYUPDATE"]:
@@ -85,7 +83,9 @@ class WebhookService:
         }
 
         # Salva o Deal
+        print(f"Deal atualizado: {deal_data}")
         await self.deal_repo.upsert_deal(deal_data)
+        await self.deal_repo.session.commit()
         
         # Sincroniza comentários da linha do tempo
         await self._sync_timeline_for_deal(deal_id)
