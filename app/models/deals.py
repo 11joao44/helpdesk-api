@@ -23,6 +23,7 @@ class DealModel(Base):
     last_activity_by_id: Mapped[Optional[str]] = mapped_column(String(10))
     last_communication_time: Mapped[Optional[str]] = mapped_column(String(19))
     close_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    date_deadline: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     begin_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     requester_department: Mapped[Optional[str]] = mapped_column(String(100), index=True)
     assignee_department: Mapped[Optional[str]] = mapped_column(String(100), index=True)

@@ -7,6 +7,7 @@ class BitrixFields:
     # Campos de Texto
     PROTOCOL_NUMBER = "UF_CRM_1763556608"
     DESCRIPTION     = "UF_CRM_688788E6B494B"
+    PRAZO           = "UF_CRM_1763985609"
     
     # Atenção: Campo do tipo 'employee' (vínculo com usuário do Bitrix)
     MATRICULA_USER_ID = "UF_CRM_1763994823" 

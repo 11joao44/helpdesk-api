@@ -52,6 +52,7 @@ class WebhookService:
         raw = await self.bitrix.get_deal(deal_id)
         if raw.get("ID") != "8029": return # PARA AMBIENTE LOCAL DE TESTE
         if not raw: return
+        print("Data Prazo: ", raw.get(BitrixFields.PRAZO))
         responsible = await self.bitrix.get_responsible(raw.get("ASSIGNED_BY_ID"))
         deal_data = {
             "deal_id": int(raw["ID"]),          
@@ -72,6 +73,7 @@ class WebhookService:
             "service_category": BitrixValues.get_label(BitrixValues.CATEGORIA, raw.get(BitrixFields.CATEGORIA)),
             "system_type": BitrixValues.get_label(BitrixValues.SISTEMAS, raw.get(BitrixFields.SISTEMA)),
             "priority": BitrixValues.get_label(BitrixValues.PRIORIDADE, raw.get(BitrixFields.PRIORIDADE)),
+            "date_deadline": self._parse_date(raw.get(BitrixFields.PRAZO)),
         }
 
         print(f"Deal atualizado: {deal_data}")

@@ -52,6 +52,7 @@ class DealCardSchema(DealCardCreateSchema):
     begin_date: Optional[datetime]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+    date_deadline: Optional[datetime]
     
     # Campos que retornam para o front (mantendo contrato)
     # Campos que retornam para o front (mantendo contrato)
