@@ -24,7 +24,7 @@ class WebhookService:
     async def process_webhook(self, request: Request):
         try:
             form_data = await request.form()
-            print("📦 [DEBUG] Keys recebidas:", list(form_data.keys()))
+            # print("📦 [DEBUG] Keys recebidas:", list(form_data.keys()))
             data = BitrixWebhookSchema(**dict(form_data))
         except ValidationError as e:
             print(f"⚠️ Payload inválido recebido do Bitrix: {e}")
@@ -47,7 +47,7 @@ class WebhookService:
                 comment_data = await self.bitrix.get_timeline_comment(object_id)
                 if comment_data and "ENTITY_ID" in comment_data:
                     target_deal_id = int(comment_data["ENTITY_ID"])
-                    print(f"✅ [Webhook] Processando UM comentário do Deal {target_deal_id} (Alta Performance)...")
+                    # print(f"✅ [Webhook] Processando UM comentário do Deal {target_deal_id} (Alta Performance)...")
                     # Otimização: Não busca a lista inteira, processa apenas este.
                     await self._import_single_comment(comment_data, target_deal_id)
                 else:
@@ -119,7 +119,10 @@ class WebhookService:
         existing = await self.activity_repo.get_by_activity_id(comm_id_int)
         
         if existing:
-            print(f"⏭️ [ImportComment] Comentário {comm_id_int} já existe. Pulando.")
+            print(f"⏭️ [ImportComment] Comentário {comm_id_int} já existe. Enforcando broadcast para garantir consistência.")
+            deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
+            if deal_id:
+                await self._broadcast_new_activity(existing, deal_id, bitrix_deal_id)
             return
 
         print(f"📥 Importando novo comentário {comm_id_int} do Bitrix...")
