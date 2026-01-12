@@ -27,6 +27,7 @@ class BitrixWebhookSchema(BaseModel):
     event: str
     event_handler_id: int | str
     data_fields_id: int = Field(alias="data[FIELDS][ID]")
+    data_fields_entity_id: int | None = Field(default=None, alias="data[FIELDS][ENTITY_ID]")
     ts: TsInt
     auth_domain: str = Field(alias="auth[domain]")
     auth_client_endpoint: str = Field(alias="auth[client_endpoint]")

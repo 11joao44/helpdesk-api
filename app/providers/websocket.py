@@ -13,7 +13,6 @@ class ConnectionManager:
             self.active_connections[deal_id] = []
         self.active_connections[deal_id].append(websocket)
         logger.info(f"🔌 WebSocket conectado na sala {deal_id}. Total: {len(self.active_connections[deal_id])}")
-        logger.info(f"🔍 [DEBUG] Rooms Ativas pós-conexão: {list(self.active_connections.keys())}")
 
     def disconnect(self, websocket: WebSocket, deal_id: str):
         if deal_id in self.active_connections:
@@ -25,7 +24,6 @@ class ConnectionManager:
                 del self.active_connections[deal_id]
 
     async def broadcast(self, message: dict, deal_id: str):
-        logger.info(f"🔍 [DEBUG] Rooms Ativas no Processo: {list(self.active_connections.keys())}")
         if deal_id in self.active_connections:
             logger.info(f"📢 Broadcasting mensagem para Deal {deal_id} ({len(self.active_connections[deal_id])} conexões)")
             for connection in self.active_connections[deal_id]:

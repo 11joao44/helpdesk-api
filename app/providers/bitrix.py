@@ -183,7 +183,7 @@ class BitrixProvider:
                 "OPENED": "Y",
                 "CATEGORY_ID": 25,
                 "CURRENCY_ID": "BRL",
-                "SOURCE_ID": "SELF",
+                "SOURCE_ID": "5",
                 "CONTACT_ID": contact_id,
                 "ASSIGNED_BY_ID": data.resp_id if data.resp_id else "6185",
                 "COMMENTS": ("Chamado vindo do Portal HelpDesk"),
@@ -332,6 +332,17 @@ class BitrixProvider:
             method="POST"
         )
         return results if isinstance(results, list) else []
+
+
+    async def get_timeline_comment(self, comment_id: int) -> Optional[Dict[str, Any]]:
+        """Busca um comentário específico da timeline pelo ID."""
+        # print(f"📡 [Provider] Buscando Comentário {comment_id}...")
+        result = await self._call_bitrix(
+            "crm.timeline.comment.get",
+            params={"id": comment_id},
+            method="GET" # get usa params
+        )
+        return result
 
 
     async def list_activities(self, deal_id: int) -> list:

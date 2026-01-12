@@ -24,6 +24,7 @@ class WebhookService:
     async def process_webhook(self, request: Request):
         try:
             form_data = await request.form()
+            print("📦 [DEBUG] Keys recebidas:", list(form_data.keys()))
             data = BitrixWebhookSchema(**dict(form_data))
         except ValidationError as e:
             print(f"⚠️ Payload inválido recebido do Bitrix: {e}")
@@ -33,13 +34,25 @@ class WebhookService:
         object_id = data.data_fields_id
 
         if not object_id: return
-
+        print(f"Evento recebido: {event}")
         try:
             if event in ["ONCRMDEALADD", "ONCRMDEALUPDATE"]: # Rota de NEGÓCIOS
                 await self._sync_deal(object_id)
             
             elif event in ["ONCRMACTIVITYADD", "ONCRMACTIVITYUPDATE"]: # Rota de ATIVIDADES
                 await self._sync_activity(object_id)
+
+            elif event in ["ONCRMTIMELINECOMMENTADD"]: # Rota de COMENTÁRIOS
+                # O Webhook só manda o ID do Comentário. Precisamos buscar o comentário para saber qual é o Deal.
+                comment_data = await self.bitrix.get_timeline_comment(object_id)
+                if comment_data and "ENTITY_ID" in comment_data:
+                    target_deal_id = int(comment_data["ENTITY_ID"])
+                    print(f"✅ [Webhook] Processando UM comentário do Deal {target_deal_id} (Alta Performance)...")
+                    # Otimização: Não busca a lista inteira, processa apenas este.
+                    await self._import_single_comment(comment_data, target_deal_id)
+                else:
+                    print(f"⚠️ [Webhook] Não foi possível encontrar o Deal para o comentário {object_id}. Dados: {comment_data}")
+                
         except Exception as e:
             if "DEAL" in event: # Em caso de erro, faz rollback na sessão correta
                 await self.deal_repo.session.rollback()
@@ -94,88 +107,93 @@ class WebhookService:
 
         # Para cada comentário, tenta salvar como Activity
         for comm in comments_list:
-            # comm ex: {'ID': '177369', 'CREATED': '2026-01-07T21:40:05+03:00', 'AUTHOR_ID': '36', 'COMMENT': 'Lorem ipsum', 'FILES': {...}}
-            
-            comm_id_int = int(comm["ID"])
-            existing = await self.activity_repo.get_by_activity_id(comm_id_int)
-            
-            if existing:
-                print(f"⏭️ [SyncTimeline] Comentário {comm_id_int} já existe. Pulando.")
-                continue # Já temos, pula (ou poderia atualizar se quisesse editar)
-                
-            print(f"📥 Importando novo comentário {comm_id_int} do Bitrix...")
-            
-            # Busca ID interno do Deal
-            deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
-            if not deal_id:
-                print(f"⚠️ Deal {bitrix_deal_id} sem ID interno. Pulando comentário.")
-                continue
+            await self._import_single_comment(comm, bitrix_deal_id)
 
-            # Extração de Author/User
-            author_id = comm.get("AUTHOR_ID")
-            # Tenta pegar info do user se não tivermos
-            responsible_info = {}
-            if author_id:
-                responsible_info = await self.bitrix.get_responsible(author_id) or {}
 
-            # Extração de Arquivos
-            files_data = comm.get("FILES") or []
-            files_list = []
-            if isinstance(files_data, dict):
-                 files_list = list(files_data.values())
-            elif isinstance(files_data, list):
-                 files_list = files_data
-            
-            # Monta payload da Activity
-            activity_data = {
-                "deal_id": deal_id,
-                "activity_id": comm_id_int,
-                "owner_type_id": "2",
-                "type_id": "COMM",             # Mapeia para nosso tipo curto
-                "provider_id": "CRM_COMMENT",
-                "provider_type_id": "COMMENT",
-                "direction": "2",              # Entrada/Saída não se aplica bem, mas 2=Saída é ok
-                "subject": "Comentário via Bitrix",
-                "description": comm.get("COMMENT"),
-                "body_html": comm.get("COMMENT"),
-                "description_type": "1",       # 1=Texto simples (geralmente), Bitrix manda HTML as vezes
-                "responsible_id": author_id,
-                "responsible_name": responsible_info.get("responsible"),
-                "responsible_email": responsible_info.get("email"),
-                "author_id": author_id,
-                "created_at_bitrix": self._parse_date(comm.get("CREATED"))
-            }
-            
-            # Salva
-            new_activity = await self.activity_repo.upsert_activity(activity_data)
-            
-            # Processa Arquivos
-            processed_files = []
-            for f in files_list:
-                # f ex: {'id': 123, 'url': ...}
-                file_id = f.get("id")
-                if not file_id: continue
-                
-                res = await self._process_attachment(f)
-                if res:
-                    url_minio, fname = res
-                    processed_files.append({
-                         "activity_id": new_activity.id,
-                         "bitrix_file_id": file_id,
-                         "file_url": url_minio,
-                         "filename": fname
-                    })
-            
-            if processed_files:
-                await self.activity_repo.sync_files(new_activity.id, processed_files)
-                new_activity.file_url = processed_files[0]["file_url"]
-                self.activity_repo.session.add(new_activity)
+    async def _import_single_comment(self, comm: dict, bitrix_deal_id: int):
+        """
+        Processa e salva UM ÚNICO comentário vindo do Webhook ou da Lista.
+        Evita duplicação de lógica e loops desnecessários.
+        """
+        comm_id_int = int(comm["ID"])
+        existing = await self.activity_repo.get_by_activity_id(comm_id_int)
+        
+        if existing:
+            print(f"⏭️ [ImportComment] Comentário {comm_id_int} já existe. Pulando.")
+            return
 
-            # Commit ANTES do Broadcast para evitar Race Condition no Front
-            await self.activity_repo.session.commit()
+        print(f"📥 Importando novo comentário {comm_id_int} do Bitrix...")
+        
+        # Busca ID interno do Deal (se ainda não tivermos no contexto, buscamos agora)
+        # Assumindo que o chamador manda o bitrix_deal_id CORRETO
+        deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
+        if not deal_id:
+            print(f"⚠️ Deal {bitrix_deal_id} sem ID interno. Pulando comentário {comm_id_int}.")
+            return
 
-            # Broadcast WebSocket
-            await self._broadcast_new_activity(new_activity, deal_id, bitrix_deal_id)
+        # Extração de Author/User
+        author_id = comm.get("AUTHOR_ID")
+        responsible_info = {}
+        if author_id:
+            responsible_info = await self.bitrix.get_responsible(author_id) or {}
+
+        # Extração de Arquivos
+        files_data = comm.get("FILES") or []
+        files_list = []
+        if isinstance(files_data, dict):
+                files_list = list(files_data.values())
+        elif isinstance(files_data, list):
+                files_list = files_data
+        
+        # Monta payload da Activity
+        activity_data = {
+            "deal_id": deal_id,
+            "activity_id": comm_id_int,
+            "owner_type_id": "2",
+            "type_id": "COMM",             
+            "provider_id": "CRM_COMMENT",
+            "provider_type_id": "COMMENT",
+            "direction": "2",              
+            "subject": "Comentário via Bitrix",
+            "description": comm.get("COMMENT"),
+            "body_html": comm.get("COMMENT"),
+            "description_type": "1",       
+            "responsible_id": author_id,
+            "responsible_name": responsible_info.get("responsible"),
+            "responsible_email": responsible_info.get("email"),
+            "author_id": author_id,
+            "created_at_bitrix": self._parse_date(comm.get("CREATED"))
+        }
+        
+        # Salva
+        new_activity = await self.activity_repo.upsert_activity(activity_data)
+        
+        # Processa Arquivos
+        processed_files = []
+        for f in files_list:
+            file_id = f.get("id")
+            if not file_id: continue
+            
+            res = await self._process_attachment(f)
+            if res:
+                url_minio, fname = res
+                processed_files.append({
+                        "activity_id": new_activity.id,
+                        "bitrix_file_id": file_id,
+                        "file_url": url_minio,
+                        "filename": fname
+                })
+        
+        if processed_files:
+            await self.activity_repo.sync_files(new_activity.id, processed_files)
+            new_activity.file_url = processed_files[0]["file_url"]
+            self.activity_repo.session.add(new_activity)
+
+        # Commit ANTES do Broadcast
+        await self.activity_repo.session.commit()
+
+        # Broadcast WebSocket
+        await self._broadcast_new_activity(new_activity, deal_id, bitrix_deal_id)
 
     async def _broadcast_new_activity(self, activity, deal_id, bitrix_deal_id):
         try:
