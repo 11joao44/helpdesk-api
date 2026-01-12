@@ -50,6 +50,7 @@ class BitrixProvider:
 
         return contacts[0]["ID"]
 
+
     async def upload_disk_file(self, filename: str, content: str) -> Optional[int]:
         """Faz upload de um arquivo para o Bitrix Disk (Pasta Raiz do Storage Padrão)"""
         
@@ -149,6 +150,7 @@ class BitrixProvider:
                 print(f"❌ [Bitrix] Erro no upload para disk: {e}")
                 return None
 
+
     async def create_deal(self, data: TicketCreateRequest) -> int | None:
         """
         Cria o Negócio traduzindo os campos do Front para o Bitrix.
@@ -173,15 +175,6 @@ class BitrixProvider:
             BitrixValues.CATEGORIA, data.service_category
         )
 
-        descricao_completa = (
-            f"Chamado vindo do Portal HelpDesk\n\n"
-            f"{data.description}\n\n"
-            f"# Detalhes Adicionais\n"
-            f"Solicitante: {data.full_name} (Matrícula: {data.matricula})\n"
-            f"Departamento de Origem: {data.requester_department}\n"
-            f"Telefone Informado: {data.phone}"
-        )
-
         payload = {
             "fields": {
                 "TITLE": data.title,
@@ -193,7 +186,7 @@ class BitrixProvider:
                 "SOURCE_ID": "SELF",
                 "CONTACT_ID": contact_id,
                 "ASSIGNED_BY_ID": data.resp_id if data.resp_id else "6185",
-                "COMMENTS": descricao_completa,
+                "COMMENTS": ("Chamado vindo do Portal HelpDesk"),
                 "UF_CRM_6938495549C8A": data.requester_department,
                 "UF_CRM_1766502007":"1825", # Forma de Criação -> Automática
                 BitrixFields.DESCRIPTION: data.description,
@@ -223,7 +216,6 @@ class BitrixProvider:
             return deal_id
 
         return None
-
 
 
     async def add_comment(self, deal_id: int, message: str, attachments: list = []) -> int | None:
@@ -291,9 +283,11 @@ class BitrixProvider:
         
         return int(result) if result else None
 
+
     async def get_deal(self, deal_id: int) -> Optional[Dict[str, Any]]:
         # print(f"📡 [Provider] Buscando Deal {deal_id}...")
         return await self._call_bitrix("crm.deal.get", params={"id": deal_id})
+
 
     async def get_responsible(self, ASSIGNED_BY_ID: int) -> Optional[Dict[str, Any]]:
         # print(f"📡 [Provider] Buscando Responsável ID {ASSIGNED_BY_ID}...")
@@ -311,9 +305,11 @@ class BitrixProvider:
             "responsible": f"{user.get('NAME', '')} {user.get('LAST_NAME', '')}".strip(),
         }
 
+
     async def get_activity(self, activity_id: int) -> Optional[Dict[str, Any]]:
         # print(f"📡 [Provider] Buscando Atividade {activity_id}...")
         return await self._call_bitrix("crm.activity.get", params={"id": activity_id})
+
 
     async def list_timeline_comments(self, deal_id: int) -> list:
         """Lista os comentários da timeline de um Deal."""
@@ -337,6 +333,7 @@ class BitrixProvider:
         )
         return results if isinstance(results, list) else []
 
+
     async def list_activities(self, deal_id: int) -> list:
         """Lista todas as atividades de um Deal."""
         # print(f"📡 [Provider] Listando atividades do Deal {deal_id}...")
@@ -353,6 +350,7 @@ class BitrixProvider:
             method="POST"
         )
         return results if isinstance(results, list) else []
+
 
     async def _call_bitrix(self, endpoint: str, params: Dict = None, json_body: Dict = None, method: str = "GET") -> Optional[Any]:
         """
@@ -387,6 +385,7 @@ class BitrixProvider:
             except Exception as e:
                 print(f"❌ [Provider] Erro na chamada {endpoint}: {e}")
                 return None
+
 
     async def send_email(self, deal_id: int, subject: str, message: str, to_email: str, from_email: str = None, attachments: list = []) -> int | None:
         """Envia um e-mail vinculado ao Deal (Ticket) para o cliente."""
@@ -445,6 +444,7 @@ class BitrixProvider:
 
         return None
 
+
     async def close_deal(self, deal_id: int, rating: int = None, comment: str = None) -> bool:
         """Encerra o chamado movendo para a etapa de sucesso e salvando a avaliação."""
 
@@ -466,10 +466,12 @@ class BitrixProvider:
             method="POST",
         )
 
+
     async def get_disk_file(self, file_id: int) -> Optional[Dict[str, Any]]:
         """Busca metadados de um arquivo no Bitrix Drive (Disk)"""
         return await self._call_bitrix("disk.file.get", params={"id": file_id})
     
+
     async def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
         """Busca dados de um usuário Bitrix pelo ID"""
         # print(f"📡 [Provider] Buscando Usuário ID {user_id}...")
@@ -479,6 +481,7 @@ class BitrixProvider:
             return users_list[0]
             
         return None
+
 
     async def get_file_url(self, file_id: int) -> Optional[str]:
         """Tenta obter uma URL de visualização/download para o arquivo no Disk"""

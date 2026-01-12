@@ -14,8 +14,6 @@ router = APIRouter(tags=["Webhook Bitrix24"])
 async def debug_request(request: Request):
     form_data = await request.form()
     print("Evento recebido: ", form_data.get("event"))
-    if form_data.get("data[FIELDS][ID]") != "837":
-        return
     print("\n" + "="*50)
     print(f"📦 Quantidade de campos: {len(form_data)}")
     print(f"📦 form_data campos: {form_data}")
@@ -29,9 +27,6 @@ def get_webhook_service(db: AsyncSession = Depends(session_db)) -> WebhookServic
 @router.post("/webhook-bitrix24", status_code=status.HTTP_200_OK)
 async def handle_bitrix_webhook(request: Request,  service: WebhookService = Depends(get_webhook_service)):
     """Endpoint oficial de integração. Recebe o ID -> Busca Detalhes -> Salva no Banco."""
-    # await debug_request(request)
-    form_data = await request.form()
-    print("Evento recebido: ", form_data.get("event"))
     await service.process_webhook(request)
     return "OK"
 

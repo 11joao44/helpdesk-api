@@ -6,7 +6,7 @@ from app.repositories.activity import ActivityRepository
 from app.repositories.deals import DealRepository
 from app.providers.bitrix import BitrixProvider
 from app.schemas.bitrix import BitrixWebhookSchema
-from app.core.constants import BitrixFields
+from app.core.constants import BitrixFields, BitrixValues
 from app.providers.storage import StorageProvider
 
 class WebhookService:
@@ -22,7 +22,6 @@ class WebhookService:
         self.storage = StorageProvider()
 
     async def process_webhook(self, request: Request):
-        # --- 1. Validação e Parse do Payload ---
         try:
             form_data = await request.form()
             data = BitrixWebhookSchema(**dict(form_data))
@@ -33,41 +32,31 @@ class WebhookService:
         event = data.event
         object_id = data.data_fields_id
 
-        if not object_id:
-            return
+        if not object_id: return
 
-        # --- 2. Roteamento do Evento ---
         try:
-           # print(f"🔄 Recebido: {event} | ID: {object_id}")
-
-            # Rota de NEGÓCIOS
-            if event in ["ONCRMDEALADD", "ONCRMDEALUPDATE"]:
+            if event in ["ONCRMDEALADD", "ONCRMDEALUPDATE"]: # Rota de NEGÓCIOS
                 await self._sync_deal(object_id)
             
-            # Rota de ATIVIDADES
-            elif event in ["ONCRMACTIVITYADD", "ONCRMACTIVITYUPDATE"]:
+            elif event in ["ONCRMACTIVITYADD", "ONCRMACTIVITYUPDATE"]: # Rota de ATIVIDADES
                 await self._sync_activity(object_id)
-
         except Exception as e:
-            # Em caso de erro, faz rollback na sessão correta
-            if "DEAL" in event:
+            if "DEAL" in event: # Em caso de erro, faz rollback na sessão correta
                 await self.deal_repo.session.rollback()
             else:
                 await self.activity_repo.session.rollback()
-            
             print(f"❌ Erro crítico no processamento do Webhook: {e}")
 
 
     async def _sync_deal(self, deal_id: int):
         raw = await self.bitrix.get_deal(deal_id)
+        if raw.get("ID") != "8029": return # PARA AMBIENTE LOCAL DE TESTE
         if not raw: return
         responsible = await self.bitrix.get_responsible(raw.get("ASSIGNED_BY_ID"))
-
         deal_data = {
             "deal_id": int(raw["ID"]),          
             "title": raw.get("TITLE"),
             "stage_id": raw.get("STAGE_ID"),
-            "description": raw.get(BitrixFields.DESCRIPTION),
             "opened": raw.get("OPENED"),
             "closed": raw.get("CLOSED"),
             "created_by_id": raw.get("CREATED_BY_ID"),
@@ -80,15 +69,17 @@ class WebhookService:
             "last_communication_time": raw.get("LAST_COMMUNICATION_TIME"),
             "responsible": responsible['responsible'],
             "responsible_email": responsible['email'],
+            "service_category": BitrixValues.get_label(BitrixValues.CATEGORIA, raw.get(BitrixFields.CATEGORIA)),
+            "system_type": BitrixValues.get_label(BitrixValues.SISTEMAS, raw.get(BitrixFields.SISTEMA)),
+            "priority": BitrixValues.get_label(BitrixValues.PRIORIDADE, raw.get(BitrixFields.PRIORIDADE)),
         }
 
-        # Salva o Deal
         print(f"Deal atualizado: {deal_data}")
         await self.deal_repo.upsert_deal(deal_data)
         await self.deal_repo.session.commit()
         
         # Sincroniza comentários da linha do tempo
-        await self._sync_timeline_for_deal(deal_id)
+        # await self._sync_timeline_for_deal(deal_id)
 
 
     async def _sync_timeline_for_deal(self, bitrix_deal_id: int):
@@ -214,29 +205,22 @@ class WebhookService:
 
     async def _sync_activity(self, activity_id: int):
         raw = await self.bitrix.get_activity(activity_id)
-        print("Raw DESCRIPTION: ",  raw.get("DESCRIPTION"))
-        if not raw: return
+        if raw.get("OWNER_ID") != "8029": return # PARA AMBIENTE LOCAL DE TESTE
 
-        # 1. Valida se é Deal (Type 2)
-        if str(raw.get("OWNER_TYPE_ID")) != "2": 
-            return 
+        print("Retorno WEBWOOK Activity: ", raw)
+
+        if not raw: return
+        if str(raw.get("OWNER_TYPE_ID")) != "2": return # OWNER_TYPE_ID é "2" (que representa "Deal/Negócio" no Bitrix).
             
         bitrix_deal_id = int(raw.get("OWNER_ID"))
-        
-        # 2. Busca o ID interno usando o repositório de DEALS (Correção de responsabilidade)
-        deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
-        print("Deal ID WS: ", bitrix_deal_id)
-        # 3. Lógica de "Auto-Healing" (Se não achar o pai, cria ele)
-        if not deal_id:
-            print(f"⚠️ Pai não encontrado. Sincronizando Deal {bitrix_deal_id}...")
-            await self._sync_deal(bitrix_deal_id)
-            deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
-            
-            if not deal_id: 
-                print(f"❌ Falha: Não foi possível criar o Deal pai {bitrix_deal_id}.")
-                return
+        await self._sync_deal(bitrix_deal_id) # Sincronizando Deal
 
-        # 4. Extração de Dados (Arquivos)
+        deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
+        
+        if not deal_id: 
+            print(f"❌ Falha: Deal pai {bitrix_deal_id} não encontrado após sincronização.")
+            return
+
         files_data = raw.get("FILES") or []
         files_list = []
 

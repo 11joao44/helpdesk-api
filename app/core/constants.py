@@ -41,15 +41,9 @@ class BitrixValues:
     
     PRIORIDADE = {
         "Crítico/Emergencial": "1557",
-        "Critico/Emergencial": "1557",
-        "Crítico": "1557", # Caso o front mande simplificado
         "Alto/Urgente": "1559",
-        "Alto": "1559",
         "Médio/Normal": "1561",
-        "Médio": "1561",
-        "Normal": "1561",
         "Baixo/Planejado": "1563",
-        "Baixo": "1563"
     }
 
     PORTAL = {
@@ -109,6 +103,7 @@ class BitrixValues:
             "Dúvidas":"1543",
             "Criação":"1545",
             "Suporte":"1547",
+            "Outros": "1547" 
         }
     }
 
@@ -209,6 +204,22 @@ class BitrixValues:
         print(f"⚠️ [BitrixMapper] Valor não encontrado no mapa: '{value}'")
         return ""
     
+    @staticmethod
+    def get_label(mapping: dict, id_bitrix: str | None) -> str:
+        """
+        Busca reversa: Dado um ID do Bitrix, retorna o LABEL (Chave).
+        Ex: '1561' -> 'Médio/Normal'
+        """
+        if not id_bitrix:
+             return ""
+        
+        # Procura pelo ID no dicionário
+        for key, val in mapping.items():
+             if val == id_bitrix:
+                 return key # Retorna a primeira chave encontrada
+        
+        return str(id_bitrix) # Fallback: Retorna o próprio ID se não achar
+
     @staticmethod
     def get_subject_id(system_name: str, subject_name: str) -> str:
         if not system_name or not subject_name: return ""
