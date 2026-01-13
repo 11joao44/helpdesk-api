@@ -63,7 +63,6 @@ class WebhookService:
 
     async def _sync_deal(self, deal_id: int):
         raw = await self.bitrix.get_deal(deal_id)
-        if raw.get("ID") != "8029": return # PARA AMBIENTE LOCAL DE TESTE
         if not raw: return
         print("Data Prazo: ", raw.get(BitrixFields.PRAZO))
         responsible = await self.bitrix.get_responsible(raw.get("ASSIGNED_BY_ID"))
@@ -84,7 +83,7 @@ class WebhookService:
             "responsible": responsible['responsible'],
             "responsible_email": responsible['email'],
             "service_category": BitrixValues.get_label(BitrixValues.CATEGORIA, raw.get(BitrixFields.CATEGORIA)),
-            "system_type": BitrixValues.get_label(BitrixValues.SISTEMAS, raw.get(BitrixFields.SISTEMA)),
+            "system_type": BitrixValues.get_label(BitrixValues.SISTEMAS, raw.get(BitrixFields.TIPO_SISTEMA)),
             "priority": BitrixValues.get_label(BitrixValues.PRIORIDADE, raw.get(BitrixFields.PRIORIDADE)),
             "date_deadline": self._parse_date(raw.get(BitrixFields.PRAZO)),
         }
@@ -171,8 +170,10 @@ class WebhookService:
         # Salva
         new_activity = await self.activity_repo.upsert_activity(activity_data)
         
-        # Processa Arquivos
+        # Processa Arquivos e gera Mapa ID -> URL
         processed_files = []
+        file_id_map = {}
+
         for f in files_list:
             file_id = f.get("id")
             if not file_id: continue
@@ -186,11 +187,50 @@ class WebhookService:
                         "file_url": url_minio,
                         "filename": fname
                 })
-        
+                
+                # Para substituição no texto, precisamos de uma URL acessível (Presigned)
+                # pois url_minio é apenas a chave (ex: attachments/file.png)
+                full_url = self.storage.get_presigned_url(url_minio)
+                if full_url:
+                    file_id_map[str(file_id)] = full_url
+
+        # Substitui [DISK FILE ID=n123] ou [DISK FILE ID=123] pela tag de imagem
         if processed_files:
+            import re
+            
+            # Recupera body original
+            current_body = new_activity.body_html or ""
+            
+            def replace_tag(match):
+                # match.group(1) é o ID (ex: 983195)
+                fid = match.group(1)
+                if fid in file_id_map:
+                    # Gera tag img segura
+                    return f'<img src="{file_id_map[fid]}" style="max-width: 100%; height: auto; display: block; margin: 10px 0;" alt="Imagem Anexada" />'
+                return match.group(0) # Se não tiver URL, mantém a tag (ou poderia remover)
+
+            # Regex: \[DISK FILE ID=n?(\d+)\]
+            # O 'n' as vezes aparece (n983195), as vezes não.
+            new_body = re.sub(r'\[DISK FILE ID=n?(\d+)\]', replace_tag, current_body, flags=re.IGNORECASE)
+            
+            # Se mudou, atualiza no objeto e salva (o commit vai salvar)
+            if new_body != current_body:
+                new_activity.description = new_body # Description costuma ser igual body
+                new_activity.body_html = new_body
+                print(f"🖼️ [ImportComment] Tags de imagem substituídas no corpo do comentário.")
+
             await self.activity_repo.sync_files(new_activity.id, processed_files)
+            # Atualiza o file_url retrocompativel com o primeiro arquivo (Presigned também? 
+            # não, no banco costumamos guardar a chave se o front souber gerar, mas 
+            # aqui parece que o front espera URL pronta em alguns lugares.
+            # Vamos manter a lógica antiga para file_url (chave) se o front/mobile usa interceptor,
+            # MAS para o HTML (body_html) TEM que ser presigned pois é renderizado direto.
+            # O código original salvava url_minio (chave) em file_url.
+            
             new_activity.file_url = processed_files[0]["file_url"]
             self.activity_repo.session.add(new_activity)
+
+        # Commit ANTES do Broadcast
 
         # Commit ANTES do Broadcast
         await self.activity_repo.session.commit()
@@ -223,12 +263,17 @@ class WebhookService:
                 deal_id=str(bitrix_deal_id)
             )
 
+            # Broadcast também para o Dashboard Global
+            await manager.broadcast(
+                message={"type": "NEW_ACTIVITY", "payload": payload},
+                deal_id="dashboard"
+            )
+
         except Exception as e:
             print(f"⚠️ Erro Broadcast Webhook: {e}")
 
     async def _sync_activity(self, activity_id: int):
         raw = await self.bitrix.get_activity(activity_id)
-        if raw.get("OWNER_ID") != "8029": return # PARA AMBIENTE LOCAL DE TESTE
 
         print("Retorno WEBWOOK Activity: ", raw)
 

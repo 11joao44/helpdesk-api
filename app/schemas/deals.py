@@ -58,6 +58,7 @@ class DealCardSchema(DealCardCreateSchema):
     # Campos que retornam para o front (mantendo contrato)
     responsible: Optional[str] = None
     responsible_email: Optional[str] = None
+    is_unread: Optional[bool] = False
     requester_email: Optional[str] = None
     responsible_profile_picture_url: Optional[str] = None
     

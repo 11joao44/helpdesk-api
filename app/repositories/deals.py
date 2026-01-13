@@ -178,3 +178,26 @@ class DealRepository:
             
         await self.session.flush()
 
+
+    async def mark_as_unread(self, deal_internal_id: int):
+        """Marca o Deal como NÃO LIDO (possui novas atividades)."""
+        stmt = (
+            select(DealModel).where(DealModel.id == deal_internal_id)
+        )
+        result = await self.session.execute(stmt)
+        deal = result.scalar_one_or_none()
+        if deal:
+            deal.is_unread = True
+            await self.session.commit()
+
+    async def mark_as_read(self, deal_internal_id: int):
+        """Marca o Deal como LIDO (usuário visualizou)."""
+        stmt = (
+            select(DealModel).where(DealModel.id == deal_internal_id)
+        )
+        result = await self.session.execute(stmt)
+        deal = result.scalar_one_or_none()
+        if deal:
+            deal.is_unread = False
+            await self.session.commit()
+

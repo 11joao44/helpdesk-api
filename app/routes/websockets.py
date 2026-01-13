@@ -13,3 +13,17 @@ async def websocket_endpoint(websocket: WebSocket, deal_id: str, user_id: str):
             await manager.broadcast(data, deal_id)
     except WebSocketDisconnect:
         manager.disconnect(websocket, deal_id)
+
+@router.websocket("/ws/notifications")
+async def notifications_endpoint(websocket: WebSocket):
+    """
+    Endpoint global para notificações (Dashboard).
+    Conecta na sala 'dashboard' onde todas as atividades são publicadas.
+    """
+    await manager.connect(websocket, "dashboard")
+    try:
+        while True:
+            # Dashboard apenas recebe, não envia nada por enquanto
+            await websocket.receive_text() 
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "dashboard")

@@ -133,6 +133,12 @@ class DealService:
                             message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
                             deal_id=str(data.deal_id)
                         )
+
+                        # Broadcast Dashboard
+                        await manager.broadcast(
+                            message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
+                            deal_id="dashboard"
+                        )
                 except Exception as e:
                     print(f"⚠️ Erro ao transmitir WebSocket (SendEmail): {e}")
 
@@ -233,6 +239,12 @@ class DealService:
                 await manager.broadcast(
                     message={"type": "NEW_ACTIVITY", "payload": activity_payload.model_dump(mode='json')},
                     deal_id=str(deal_id)
+                )
+
+                # Broadcast Dashboard
+                await manager.broadcast(
+                    message={"type": "NEW_ACTIVITY", "payload": activity_payload.model_dump(mode='json')},
+                    deal_id="dashboard"
                 )
                 
                 # --- Persistir no Banco de Dados ---

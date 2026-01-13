@@ -151,6 +151,35 @@ class BitrixProvider:
                 return None
 
 
+    async def download_disk_file(self, file_id: int) -> Optional[tuple[str, bytes]]:
+        """
+        Baixa um arquivo do Bitrix Disk.
+        Retorna: (filename, content_bytes)
+        """
+        # 1. Obter metadados e URL de download
+        file_info = await self._call_bitrix("disk.file.get", params={"id": file_id})
+        
+        if not file_info or "DOWNLOAD_URL" not in file_info:
+            print(f"❌ [Bitrix] Falha ao obter info do arquivo DISK {file_id}")
+            return None
+            
+        download_url = file_info["DOWNLOAD_URL"]
+        filename = file_info.get("NAME", f"downloaded_file_{file_id}")
+        
+        # 2. Baixar Conteúdo
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(download_url, timeout=60.0)
+                if resp.status_code == 200:
+                    return filename, resp.content
+                else:
+                    print(f"❌ [Bitrix] Erro HTTP ao baixar arquivo {file_id}: {resp.status_code}")
+                    return None
+            except Exception as e:
+                print(f"❌ [Bitrix] Erro de conexão ao baixar arquivo {file_id}: {e}")
+                return None
+
+
     async def create_deal(self, data: TicketCreateRequest) -> int | None:
         """
         Cria o Negócio traduzindo os campos do Front para o Bitrix.
@@ -175,6 +204,15 @@ class BitrixProvider:
             BitrixValues.CATEGORIA, data.service_category
         )
 
+        # Processar Anexos
+        uploaded_file_ids = []
+        if data.attachments:
+            print(f"📎 [Bitrix] Processando {len(data.attachments)} anexos para o Deal...")
+            for att in data.attachments:
+                file_id = await self.upload_disk_file(att.get("name"), att.get("content"))
+                if file_id:
+                    uploaded_file_ids.append(file_id)
+
         payload = {
             "fields": {
                 "TITLE": data.title,
@@ -187,22 +225,34 @@ class BitrixProvider:
                 "CONTACT_ID": contact_id,
                 "ASSIGNED_BY_ID": data.resp_id if data.resp_id else "6185",
                 "COMMENTS": ("Chamado vindo do Portal HelpDesk"),
-                "UF_CRM_6938495549C8A": data.requester_department,
-                "UF_CRM_1766502007":"1825", # Forma de Criação -> Automática
+                
+                # Campos Mapeados com Constantes
+                BitrixFields.AREA_SOLICITANTE: data.requester_department,
+                BitrixFields.FORMA_CRIACAO: BitrixValues.FORMA_CRIACAO["Automática"],
                 BitrixFields.DESCRIPTION: data.description,
                 BitrixFields.PORTAL: "1981", # Portal
                 BitrixFields.CLIENT_PHONE: data.phone,
                 BitrixFields.PROTOCOL_NUMBER: data.matricula,
                 BitrixFields.DEPARTAMENTO: dept_id_bitrix,
-                BitrixFields.FILIAL: filial_id,
+                BitrixFields.FILIAIS_MATRIZ: filial_id,
                 BitrixFields.PRIORIDADE: prioridade_id,
                 BitrixFields.CATEGORIA: categoria_id,
-                BitrixFields.SISTEMA: sistema_id,
+                BitrixFields.TIPO_SISTEMA: sistema_id,
                 BitrixFields.ASSUNTO_MAP.get(sistema_id): BitrixValues.get_subject_id(
                     data.system_type, data.subject
                 ),
+                
+                # Novo Campo CPF
+                BitrixFields.CPF: data.cpf,
+
+                # Campo de Prazo (SLA) Calculado
+                BitrixFields.PRAZO: self._calculate_sla_deadline(prioridade_id),
             }
         }
+
+        # Vincular Arquivos ao Campo de Arquivo do Bitrix (se houver)
+        if uploaded_file_ids:
+             payload["fields"][BitrixFields.ARQUIVO] = uploaded_file_ids
 
         payload["fields"] = {k: v for k, v in payload["fields"].items() if v}
 
@@ -216,6 +266,44 @@ class BitrixProvider:
             return deal_id
 
         return None
+
+
+    def _calculate_sla_deadline(self, priority_id: str) -> str:
+        """
+        Calcula o prazo limite (deadline) baseado na Prioridade do Bitrix.
+        Retorna string ISO 8601.
+        
+        Regras:
+        - 1557 (Crítico): +1 Hora
+        - 1559 (Alto): +4 Horas
+        - 1561 (Médio): +1 Dia
+        - 1563 (Baixo): +3 Dias
+        """
+        if not priority_id:
+            return ""
+
+        from datetime import datetime, timedelta
+        import pytz
+
+        # Define timezone Brasil/Cuiabá (ou o que o servidor usar)
+        # O Bitrix espera ISO 8601. Vamos usar UTC ou local com offset.
+        tz = pytz.timezone("America/Cuiaba") 
+        now = datetime.now(tz)
+        
+        deadline = now # fallback
+
+        if priority_id == "1557": # Crítico
+            deadline = now + timedelta(hours=1)
+        elif priority_id == "1559": # Alto
+            deadline = now + timedelta(hours=4)
+        elif priority_id == "1561": # Médio
+            deadline = now + timedelta(days=1)
+        elif priority_id == "1563": # Baixo
+            deadline = now + timedelta(days=3)
+        else:
+            return "" # Se não for nenhum ID conhecido, não manda prazo.
+
+        return deadline.isoformat()
 
 
     async def add_comment(self, deal_id: int, message: str, attachments: list = []) -> int | None:

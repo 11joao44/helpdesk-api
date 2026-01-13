@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, String, DateTime, Text, func
+from sqlalchemy import ForeignKey, Integer, String, DateTime, Text, Boolean, func
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from app.core.database import Base
 from datetime import datetime
@@ -41,6 +41,9 @@ class DealModel(Base):
     # Attachments
     file_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     file_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Notifications
+    is_unread: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
