@@ -92,33 +92,58 @@ class DealService:
                                  expiration_hours=168
                              )
 
-                        # --- 2. Injetar Anexos (Base64 para Data URI) ---
-                        # O saved_activity ainda não tem arquivos (pois o webhook não rodou).
-                        # Vamos injetar manualmente para o front ter feedback imediato.
+                        # --- 2. Injetar Anexos (Upload MinIO + Persistência) ---
+                        temp_files = []
+                        files_to_persist = []
+
                         if data.attachments:
-                            temp_files = []
+                            print(f"📤 [DealService.send_email] Processando {len(data.attachments)} anexos...")
                             for idx, att in enumerate(data.attachments):
-                                # att = {"name": "foo.png", "content": "base64String..."}
                                 b64_content = att.get("content", "")
-                                filename = att.get("name", f"file_{idx}")
+                                filename = att.get("name", f"file_{idx}_{data.deal_id}")
                                 
-                                # Detectar mime type básico (opcional, ou genérico)
-                                mime = "application/octet-stream"
-                                if filename.lower().endswith(".png"): mime = "image/png"
-                                elif filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"): mime = "image/jpeg"
-                                elif filename.lower().endswith(".pdf"): mime = "application/pdf"
-                                
-                                # Montar Data URI
-                                data_uri = f"data:{mime};base64,{b64_content}"
-                                
+                                file_url = None
+                                object_name = None
+
+                                if b64_content:
+                                    try:
+                                        import base64
+                                        import uuid
+                                        file_bytes = base64.b64decode(b64_content)
+                                        
+                                        # Upload MinIO
+                                        ext = ""
+                                        if "." in filename:
+                                            ext = f".{filename.split('.')[-1]}"
+                                        unique_name = f"{uuid.uuid4()}{ext}"
+                                        
+                                        object_name = self.storage.upload_file(file_bytes, unique_name)
+                                        
+                                        if object_name:
+                                            signed_url = self.storage.get_presigned_url(object_name)
+                                            file_url = signed_url
+                                            print(f"✅ [DealService.send_email] Upload WS sucesso: {object_name}")
+                                            
+                                    except Exception as e:
+                                        print(f"❌ [DealService.send_email] Erro Upload MinIO: {e}")
+
+                                # Schema para WebSocket
                                 temp_file = ActivityFileSchema(
-                                    id=0, # ID temporário
+                                    id=0,
                                     bitrix_file_id=0,
-                                    file_url=data_uri,
+                                    file_url=file_url if file_url else "",
                                     filename=filename,
                                     created_at=datetime.now(timezone.utc)
                                 )
                                 temp_files.append(temp_file)
+                                
+                                # Dict para persistência
+                                if file_url:
+                                    files_to_persist.append({
+                                        "bitrix_file_id": 0,
+                                        "file_url": object_name, # Chave MinIO
+                                        "filename": filename
+                                    })
                             
                             activity_schema.files = temp_files
 
@@ -139,6 +164,18 @@ class DealService:
                             message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
                             deal_id="dashboard"
                         )
+                        
+                        # --- Persistência de Arquivos e Status ---
+                        if files_to_persist:
+                            for f in files_to_persist:
+                                f["activity_id"] = activity_id # activity_id já retornado pelo Bitrix
+                            
+                            await act_repo.sync_files(activity_id, files_to_persist)
+                            print(f"📎 [DealService.send_email] Arquivos salvos localmente: {len(files_to_persist)}")
+                            
+                        # Marcar como NÃO LIDO
+                        await self.repo.mark_as_unread(deal.id)
+                        await self.repo.session.commit() # Salva unread status e files (se sync_files não comitar sozinho? Repo usa flush, então precisa commit)
                 except Exception as e:
                     print(f"⚠️ Erro ao transmitir WebSocket (SendEmail): {e}")
 
@@ -157,15 +194,18 @@ class DealService:
                 # Busca Deal para ter o ID interno
                 deal = await self.repo.get_by_deal_id(deal_id)
                 
-                # --- Preparar Arquivos para Preview Imediato (Websocket) ---
+                # --- Preparar Arquivos para Preview Imediato (Websocket) e Persistência ---
                 temp_files = []
+                files_to_persist = []
+                
                 if attachments:
-                    print(f"📤 [DealService.add_comment] Processando {len(attachments)} anexos para WebSocket...")
+                    print(f"📤 [DealService.add_comment] Processando {len(attachments)} anexos...")
                     for idx, att in enumerate(attachments):
                         b64_content = att.get("content", "")
                         filename = att.get("name", f"file_{idx}_{deal_id}")
                         
                         file_url = None
+                        object_name = None
                         
                         if b64_content:
                             try:
@@ -189,9 +229,8 @@ class DealService:
                                     
                             except Exception as e:
                                 print(f"❌ [DealService.add_comment] Erro Upload MinIO: {e}")
-                                # Fallback para data URI se der erro? Melhor não, fica pesado.
-                                # Deixa sem URL ou tenta recuperar na próxima leitura.
                         
+                        # Schema para WebSocket
                         temp_file = ActivityFileSchema(
                             id=0,
                             bitrix_file_id=0,
@@ -200,6 +239,14 @@ class DealService:
                             created_at=datetime.now(timezone.utc)
                         )
                         temp_files.append(temp_file)
+                        
+                        # Dict para Banco de Dados
+                        if file_url: # Se salvou no MinIO
+                            files_to_persist.append({
+                                "bitrix_file_id": 0, # Não temos o ID do Bitrix aqui, foi upload via API direta
+                                "file_url": object_name, # Salva a chave (Key) no banco
+                                "filename": filename
+                            })
 
                 activity_payload = ActivitySchema(
                     id=deal.id,
@@ -272,9 +319,22 @@ class DealService:
 
                 print(f"💾 [AddComment] Tentando salvar atividade: {db_activity_data}")
                 
-                await act_repo.upsert_activity(db_activity_data)
+                new_activity = await act_repo.upsert_activity(db_activity_data)
+                
+                # Salvar Arquivos
+                if files_to_persist:
+                    # Injeta o ID da activity criada
+                    for f in files_to_persist:
+                        f["activity_id"] = new_activity.id
+                    
+                    await act_repo.sync_files(new_activity.id, files_to_persist)
+                    print(f"📎 [AddComment] Arquivos salvos localmente: {len(files_to_persist)}")
+
+                # Marcar como NÃO LIDO
+                await self.repo.mark_as_unread(deal.id)
+                
                 await self.repo.session.commit()
-                print(f"✅ [AddComment] Atividade {comment_id} salva com sucesso.")
+                print(f"✅ [AddComment] Atividade {comment_id} salva e Deal marcado como não lido.")
 
             except Exception as e:
                 import traceback

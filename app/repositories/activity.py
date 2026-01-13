@@ -76,12 +76,21 @@ class ActivityRepository:
         # await self.session.execute(delete(ActivityFileModel).where(ActivityFileModel.activity_id == activity_id))
         
         for f in files_data:
-            # Verifica duplicidade simples
-            existing = await self.session.execute(
-                select(ActivityFileModel)
-                .where(ActivityFileModel.activity_id == activity_id)
-                .where(ActivityFileModel.bitrix_file_id == f["bitrix_file_id"])
-            )
+            # Verifica duplicidade
+            stmt = select(ActivityFileModel).where(ActivityFileModel.activity_id == activity_id)
+            
+            b_id = f.get("bitrix_file_id")
+            f_url = f.get("file_url")
+
+            if b_id and b_id != 0:
+                stmt = stmt.where(ActivityFileModel.bitrix_file_id == b_id)
+            elif f_url:
+                stmt = stmt.where(ActivityFileModel.file_url == f_url)
+            else:
+                # Se não tem ID nem URL, pula
+                continue
+
+            existing = await self.session.execute(stmt)
             if existing.scalar_one_or_none():
                 continue
 
