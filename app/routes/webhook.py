@@ -21,8 +21,15 @@ async def debug_request(request: Request):
         print(f"   👉 {key}: {value}")
     print("="*50 + "\n")
 
+from app.repositories.users import UserRepository
+
 def get_webhook_service(db: AsyncSession = Depends(session_db)) -> WebhookService:
-    return WebhookService(deal_repo=DealRepository(db), activity_repo=ActivityRepository(db), provider=BitrixProvider())
+    return WebhookService(
+        deal_repo=DealRepository(db), 
+        activity_repo=ActivityRepository(db), 
+        user_repo=UserRepository(db),
+        provider=BitrixProvider()
+    )
 
 @router.post("/webhook-bitrix24", status_code=status.HTTP_200_OK)
 async def handle_bitrix_webhook(request: Request,  service: WebhookService = Depends(get_webhook_service)):

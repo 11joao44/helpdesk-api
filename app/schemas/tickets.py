@@ -68,4 +68,6 @@ class TicketCloseRequest(BaseModel):
 class TicketAddCommentRequest(BaseModel):
     deal_id: int
     message: str
+    email: Optional[str] = None
+    user_id: Optional[int] = None
     attachments: Optional[List[Dict[str, str]]] = []

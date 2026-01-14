@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
+from app.schemas.users import UserSimpleOut
 
 
 
@@ -50,9 +51,12 @@ class ActivitySchema(BaseModel):
     receiver_email: Optional[str]
     
     # Metadados
-    author_id: Optional[str]
-    editor_id: Optional[str]
-    read_confirmed: Optional[int]
+    author_id: Optional[str] = None
+    editor_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    user_id: Optional[int] = None
+    user: Optional["UserSimpleOut"] = None
+    read_confirmed: Optional[int] = None
     
     # Arquivos (Legado)
     file_id: Optional[int]
@@ -73,3 +77,6 @@ class ActivitySchema(BaseModel):
         return None
 
     class Config: from_attributes = True
+
+# Resolve Forward References
+ActivitySchema.model_rebuild()

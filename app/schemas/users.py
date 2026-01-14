@@ -51,6 +51,17 @@ class UserOut(BaseModel):
         extra="forbid"
     )
 
+class UserSimpleOut(BaseModel):
+    id: int
+    full_name: str
+    email: EmailStr
+    profile_picture_url: Optional[str] = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid"
+    )
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token:  Optional[str] = None

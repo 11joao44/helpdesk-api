@@ -51,6 +51,23 @@ class BitrixProvider:
         return contacts[0]["ID"]
 
 
+    async def get_contact_by_email(self, email: str) -> Optional[dict]:
+        """
+        Busca um contato pelo e-mail e retorna seus dados completos.
+        """
+        params = {
+            "filter": {"EMAIL": email},
+            "select": ["ID", "NAME", "LAST_NAME", "PHOTO", "ASSIGNED_BY_ID"]
+        }
+        
+        contacts = await self._call_bitrix("crm.contact.list", json_body=params, method="POST")
+        
+        if contacts and isinstance(contacts, list) and len(contacts) > 0:
+            return contacts[0]
+            
+        return None
+
+
     async def upload_disk_file(self, filename: str, content: str) -> Optional[int]:
         """Faz upload de um arquivo para o Bitrix Disk (Pasta Raiz do Storage Padrão)"""
         
@@ -306,7 +323,7 @@ class BitrixProvider:
         return deadline.isoformat()
 
 
-    async def add_comment(self, deal_id: int, message: str, attachments: list = []) -> int | None:
+    async def add_comment(self, deal_id: int, message: str, attachments: list = [], author_id: str = None) -> int | None:
         """Adiciona um comentário (com ou sem anexos) na timeline do Deal."""
         print(f"💬 [Bitrix] Adicionando comentário ao Deal {deal_id}...")
 
@@ -360,6 +377,10 @@ class BitrixProvider:
                 "FILES": files_payload,
             }
         }
+        
+        # Se tiver ID de autor (Contato), tenta forçar a autoria
+        if author_id:
+            payload["fields"]["AUTHOR_ID"] = author_id
 
         # Remove FILES key if empty to be safe (though empty list might be fine)
         if not files_payload:

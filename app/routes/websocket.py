@@ -1,6 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.providers.websocket import manager
-from app.core.config import logger
+from app.services.websocket import manager
 
 router = APIRouter(tags=["WebSockets"])
 
@@ -23,7 +22,6 @@ async def notifications_endpoint(websocket: WebSocket):
     await manager.connect(websocket, "dashboard")
     try:
         while True:
-            # Dashboard apenas recebe, não envia nada por enquanto
-            await websocket.receive_text() 
+            await websocket.receive_text()  # Dashboard apenas recebe, não envia nada por enquanto 
     except WebSocketDisconnect:
         manager.disconnect(websocket, "dashboard")

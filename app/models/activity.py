@@ -47,6 +47,8 @@ class ActivityModel(Base):
     # Metadados
     author_id: Mapped[Optional[str]] = mapped_column(String(20))
     editor_id: Mapped[Optional[str]] = mapped_column(String(20))
+    contact_id: Mapped[Optional[str]] = mapped_column(String(20)) # ID do contato (Cliente Bitrix)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True) # ID do Usuário Local (Independence)
     read_confirmed: Mapped[Optional[int]] = mapped_column(Integer) # Bitrix pode mandar '1' string, converteremos
     
     # Arquivos
@@ -60,8 +62,9 @@ class ActivityModel(Base):
     # Relacionamento
     deal: Mapped["DealModel"] = relationship("DealModel", back_populates="activities")
     files: Mapped[list["ActivityFileModel"]] = relationship("ActivityFileModel", back_populates="activity", cascade="all, delete-orphan")
+    user: Mapped[Optional["UserModel"]] = relationship("UserModel", foreign_keys=[user_id])
 
-    # Relacionamento por e-mail para pegar foto do responsável
+    # Relacionamento por e-mail para pegar foto do responsável (LEGADO - Preferir user.profile_picture)
     responsible_user: Mapped[Optional["UserModel"]] = relationship(
         "UserModel",
         primaryjoin="foreign(ActivityModel.responsible_email) == UserModel.email",
@@ -107,7 +110,9 @@ CREATE TABLE activities (
     responsible_email VARCHAR(255),
     author_id VARCHAR(20),
     editor_id VARCHAR(20),
-    read_confirmed INTEGER,   -- Verifique se aqui tinha vírgula no seu código anterior
+    contact_id VARCHAR(20),   
+    user_id INTEGER REFERENCES users(id), -- Novo campo Independence
+    read_confirmed INTEGER,
     
     -- Arquivos
     file_id INTEGER,          -- O erro estava apontando aqui

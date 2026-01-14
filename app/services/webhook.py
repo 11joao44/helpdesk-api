@@ -4,20 +4,17 @@ from pydantic import ValidationError
 
 from app.repositories.activity import ActivityRepository
 from app.repositories.deals import DealRepository
+from app.repositories.users import UserRepository
 from app.providers.bitrix import BitrixProvider
 from app.schemas.bitrix import BitrixWebhookSchema
 from app.core.constants import BitrixFields, BitrixValues
 from app.providers.storage import StorageProvider
 
 class WebhookService:
-    def __init__(
-        self, 
-        deal_repo: DealRepository, 
-        activity_repo: ActivityRepository, 
-        provider: BitrixProvider
-    ):
-        self.deal_repo = deal_repo          # Corrigido: deaL_repo -> deal_repo
+    def __init__(self, deal_repo: DealRepository, activity_repo: ActivityRepository, user_repo: UserRepository, provider: BitrixProvider):
+        self.deal_repo = deal_repo
         self.activity_repo = activity_repo
+        self.user_repo = user_repo
         self.bitrix = provider
         self.storage = StorageProvider()
 
@@ -45,11 +42,9 @@ class WebhookService:
             elif event in ["ONCRMTIMELINECOMMENTADD"]: # Rota de COMENTÁRIOS
                 # O Webhook só manda o ID do Comentário. Precisamos buscar o comentário para saber qual é o Deal.
                 comment_data = await self.bitrix.get_timeline_comment(object_id)
+                print(f"Comentário recebido: {comment_data}")
                 if comment_data and "ENTITY_ID" in comment_data:
-                    target_deal_id = int(comment_data["ENTITY_ID"])
-                    # print(f"✅ [Webhook] Processando UM comentário do Deal {target_deal_id} (Alta Performance)...")
-                    # Otimização: Não busca a lista inteira, processa apenas este.
-                    await self._import_single_comment(comment_data, target_deal_id)
+                    await self._import_single_comment(comment_data, int(comment_data["ENTITY_ID"]))
                 else:
                     print(f"⚠️ [Webhook] Não foi possível encontrar o Deal para o comentário {object_id}. Dados: {comment_data}")
                 
@@ -115,21 +110,13 @@ class WebhookService:
         Evita duplicação de lógica e loops desnecessários.
         """
         comm_id_int = int(comm["ID"])
-        existing = await self.activity_repo.get_by_activity_id(comm_id_int)
-        
-        if existing:
-            print(f"⏭️ [ImportComment] Comentário {comm_id_int} já existe. Enforcando broadcast para garantir consistência.")
-            deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
-            if deal_id:
-                await self._broadcast_new_activity(existing, deal_id, bitrix_deal_id)
-            return
 
-        print(f"📥 Importando novo comentário {comm_id_int} do Bitrix...")
+
         
-        # Busca ID interno do Deal (se ainda não tivermos no contexto, buscamos agora)
-        # Assumindo que o chamador manda o bitrix_deal_id CORRETO
-        deal_id = await self.deal_repo.get_deal_internal_id(bitrix_deal_id)
-        if not deal_id:
+        deal = await self.deal_repo.get_by_deal_id(bitrix_deal_id)
+        print(f"Deal encontrado: {deal}")
+
+        if not deal.id:
             print(f"⚠️ Deal {bitrix_deal_id} sem ID interno. Pulando comentário {comm_id_int}.")
             return
 
@@ -149,14 +136,14 @@ class WebhookService:
         
         # Monta payload da Activity
         activity_data = {
-            "deal_id": deal_id,
+            "deal_id": deal.id,
             "activity_id": comm_id_int,
             "owner_type_id": "2",
             "type_id": "COMM",             
             "provider_id": "CRM_COMMENT",
             "provider_type_id": "COMMENT",
             "direction": "2",              
-            "subject": "Comentário via Bitrix",
+            "subject": "",
             "description": comm.get("COMMENT"),
             "body_html": comm.get("COMMENT"),
             "description_type": "1",       
@@ -164,8 +151,53 @@ class WebhookService:
             "responsible_name": responsible_info.get("responsible"),
             "responsible_email": responsible_info.get("email"),
             "author_id": author_id,
-            "created_at_bitrix": self._parse_date(comm.get("CREATED"))
+            "created_at_bitrix": self._parse_date(comm.get("CREATED")),
+            
+            # Fallback para evitar null no front
+            "from_email": responsible_info.get("email") or deal.responsible_email,
+            "sender_email": responsible_info.get("email") or deal.responsible_email,
+            "to_email": deal.requester_email,
+            "receiver_email": deal.requester_email
         }
+
+        # 🛡️ Lógica de Preservação de HTML Rico (Imagens Inline)
+        # O Bitrix remove tags <img> e retorna apenas texto. Se nós salvamos com <img> antes (via API),
+        # precisamos manter nossa versão para não quebrar a exibição no front.
+        existing_activity = await self.activity_repo.get_by_activity_id(comm_id_int)
+        if existing_activity and existing_activity.body_html and "<img" in existing_activity.body_html:
+            # Se o Bitrix mandou [DISK FILE ID], ele converteu corretamente e nossa lógica abaixo vai tratar.
+            # Se NÃO mandou, ele só limpou a tag. Nesse caso, preservamos o nosso HTML original.
+            if "[DISK FILE ID" not in (comm.get("COMMENT") or ""):
+                print(f"🛡️ [Webhook] Preservando HTML local rico (Imagens Inline) para Comment {comm_id_int}")
+                activity_data["description"] = existing_activity.description
+                activity_data["body_html"] = existing_activity.body_html
+                activity_data["description_type"] = existing_activity.description_type
+
+
+        # 🚀 Lógica de Identidade para Comentários
+        # 1. Tentamos identificar quem escreveu (Pelo AUTHOR_ID -> Email)
+        author_email = responsible_info.get("email")
+        
+        # Se temos o email do autor, buscamos match local
+        if author_email:
+             local_author = await self.user_repo.get_by_email(author_email)
+             if local_author:
+                 activity_data["user_id"] = local_author.id
+        
+        # 2. Se NÃO achou local (ex: Email externo/Cliente), tentamos vincular ao Solicitante do Deal
+        #    Isso assume que se não é um agente interno, é o cliente respondendo.
+        if not activity_data.get("user_id"):
+             target_email = deal.requester_email
+             if target_email:
+                 # Busca Local (Cliente que também é usuário?)
+                 local_user = await self.user_repo.get_by_email(target_email)
+                 if local_user:
+                     activity_data["user_id"] = local_user.id
+                 else:
+                     # Busca Bitrix (Contato Externo)
+                     contact = await self.bitrix.get_contact_by_email(target_email)
+                     if contact:
+                         activity_data["contact_id"] = contact.get("ID")
         
         # Salva
         new_activity = await self.activity_repo.upsert_activity(activity_data)
@@ -236,16 +268,15 @@ class WebhookService:
         await self.activity_repo.session.commit()
 
         # Broadcast WebSocket
-        await self._broadcast_new_activity(new_activity, deal_id, bitrix_deal_id)
+        await self._broadcast_new_activity(new_activity, deal.id, bitrix_deal_id)
 
     async def _broadcast_new_activity(self, activity, deal_id, bitrix_deal_id):
         try:
-            from app.providers.websocket import manager
+            from app.services.websocket import manager
             from app.schemas.activity import ActivitySchema
             
             # Recarrega do banco para pegar relacionamentos novos
             saved = await self.activity_repo.get_by_activity_id(activity.activity_id)
-            print("🚀 Activity salva:", saved)
             if not saved: return # Safety check
             
             schema = ActivitySchema.model_validate(saved)
@@ -254,9 +285,6 @@ class WebhookService:
             
             # Injeta ID do Bitrix no payload para o Front reconhecer
             payload["bitrix_deal_id"] = bitrix_deal_id
-            print("🚀 Payload:", payload)
-            print("🚀 Deal ID:", deal_id)
-            print("🚀 Bitrix Deal ID:", bitrix_deal_id)
 
             await manager.broadcast(
                 message={"type": "NEW_ACTIVITY", "payload": payload},
@@ -274,8 +302,6 @@ class WebhookService:
 
     async def _sync_activity(self, activity_id: int):
         raw = await self.bitrix.get_activity(activity_id)
-
-        print("Retorno WEBWOOK Activity: ", raw)
 
         if not raw: return
         if str(raw.get("OWNER_TYPE_ID")) != "2": return # OWNER_TYPE_ID é "2" (que representa "Deal/Negócio" no Bitrix).
@@ -366,6 +392,46 @@ class WebhookService:
             "read_confirmed": 1 if raw.get("STATUS") == '2' else 0,
             "created_at_bitrix": self._parse_date(raw.get("CREATED"))
         }
+
+        # 🚀 LÓGICA DE IDENTIDADE HÍBRIDA (User Local -> Contact Bitrix) 🚀
+        if email_from:
+            # 1. Tenta achar Usuário Interno (Sistema Independente)
+            local_user = await self.user_repo.get_by_email(email_from)
+            
+            if local_user:
+                 print(f"🏢 [Webhook] Identificado remetente como Usuário Interno: {local_user.full_name} (ID: {local_user.id})")
+                 activity_data["user_id"] = local_user.id
+                 activity_data["responsible_name"] = local_user.full_name
+                 activity_data["responsible_id"] = str(local_user.id) # Override ID Bitrix com Local se quiser
+                 
+                 # Foto do Usuário Local, se tiver
+                 if local_user.profile_picture:
+                      # activity_data["responsible_profile_picture_url"] = ... (Se o schema/model suportar)
+                      pass
+                      
+            else:
+                # 2. Se não for interno, tenta achar Contato/Cliente (Bitrix)
+                contact = await self.bitrix.get_contact_by_email(email_from)
+                
+                if contact:
+                    # É um Contato/Cliente!
+                    print(f"👤 [Webhook] Identificado remetente como Contato: {contact.get('NAME')} (ID: {contact.get('ID')})")
+                    
+                    activity_data["contact_id"] = contact.get("ID")
+                    activity_data["direction"] = "1" # Entrada (Inbound)
+                    
+                    # Ajusta a 'Identidade Visual' da Atividade para ser o Cliente
+                    activity_data["responsible_name"] = f"{contact.get('NAME', '')} {contact.get('LAST_NAME', '')}".strip()
+                    activity_data["responsible_id"] = None # Não é usuário interno
+                    # activity_data["author_id"] = None # Opcional
+                    
+                    # Foto do Contato (Se houver)
+                    if contact.get("PHOTO"):
+                       pass # Lógica de foto
+
+                else:
+                     # Não achou nem local nem contato, assume que é Usuário Bitrix não mapeado ou Sistema
+                     pass
 
         # Verifica se já existe atividade para não sobrescrever e-mails
         existing_activity = await self.activity_repo.get_by_activity_id(activity_data["activity_id"])

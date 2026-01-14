@@ -59,6 +59,17 @@ def _sign_deals(deals: List, storage: StorageProvider):
                         signed_f_url = storage.get_presigned_url(f.file_url)
                         if signed_f_url:
                             f.file_url = signed_f_url
+            
+            # 3. Tratamento para objeto USER (Novo Schema Activity.user)
+            if hasattr(activity, "user") and activity.user:
+                # O objeto activity.user é um UserModel (SQLAlchemy). 
+                # O Schema UserSimpleOut espera 'profile_picture_url'.
+                # O Model tem 'profile_picture'.
+                # Vamos gerar a URL assinada e injetar atributo dinâmico no objeto ORM.
+                if activity.user.profile_picture:
+                    signed_avatar = storage.get_presigned_url(activity.user.profile_picture, expiration_hours=168)
+                    # Injeta no objeto para o Pydantic ler
+                    activity.user.profile_picture_url = signed_avatar
     return deals
 
 
@@ -92,7 +103,9 @@ async def add_ticket_comment(payload: TicketAddCommentRequest, service: DealServ
     success = await service.add_comment(
         deal_id=payload.deal_id,
         message=payload.message,
-        attachments=payload.attachments
+        attachments=payload.attachments,
+        email=payload.email,
+        user_id=payload.user_id
     )
     
     if success:

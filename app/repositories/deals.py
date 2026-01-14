@@ -46,6 +46,7 @@ class DealRepository:
                 selectinload(DealModel.responsible_user_rel),
                 selectinload(DealModel.activities).selectinload(ActivityModel.files),
                 selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user),
+                selectinload(DealModel.activities).selectinload(ActivityModel.deal),
                 selectinload(DealModel.files)
             )
             .order_by(DealModel.created_at.desc())
@@ -63,6 +64,7 @@ class DealRepository:
                 selectinload(DealModel.responsible_user_rel),
                 selectinload(DealModel.activities).selectinload(ActivityModel.files),
                 selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user),
+                selectinload(DealModel.activities).selectinload(ActivityModel.deal),
                 selectinload(DealModel.files)
             )
             .order_by(DealModel.created_at.desc())
@@ -81,6 +83,7 @@ class DealRepository:
                 selectinload(DealModel.responsible_user_rel),
                 selectinload(DealModel.activities).selectinload(ActivityModel.files),
                 selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user),
+                selectinload(DealModel.activities).selectinload(ActivityModel.deal),
                 selectinload(DealModel.files)
             )
             .order_by(DealModel.created_at.desc())
@@ -140,6 +143,7 @@ class DealRepository:
                 selectinload(DealModel.responsible_user_rel),
                 selectinload(DealModel.activities).selectinload(ActivityModel.files),
                 selectinload(DealModel.activities).selectinload(ActivityModel.responsible_user),
+                selectinload(DealModel.activities).selectinload(ActivityModel.deal),
                 selectinload(DealModel.files)
             )
             .order_by(DealModel.created_at.desc())
@@ -200,4 +204,5 @@ class DealRepository:
         if deal:
             deal.is_unread = False
             await self.session.commit()
+            await self.session.refresh(deal)
 

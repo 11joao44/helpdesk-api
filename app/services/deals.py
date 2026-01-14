@@ -7,7 +7,6 @@ from app.providers.storage import StorageProvider
 from app.repositories.deals import DealRepository
 from app.schemas.tickets import TicketCloseRequest, TicketCreateRequest, TicketSendEmail
 
-
 class DealService:
     def __init__(self, session: AsyncSession):
         # Instanciamos o provider aqui ou recebemos via injeção
@@ -63,7 +62,6 @@ class DealService:
                     "to_email": data.to_email,
                     "sender_email": data.from_email,
                     "receiver_email": data.to_email,
-                    "receiver_email": data.to_email,
                     "created_at_bitrix": datetime.now(timezone.utc)
                 }
                 
@@ -72,7 +70,7 @@ class DealService:
 
                 # --- Real-time Broadcast ---
                 try:
-                    from app.providers.websocket import manager
+                    from app.services.websocket import manager
                     # Buscamos do banco para garantir que venha com relacionamentos carregados (eager load)
                     # O método get_by_activity_id agora faz selectinload de files
                     saved_activity = await act_repo.get_by_activity_id(activity_id)
@@ -182,13 +180,22 @@ class DealService:
         return activity_id
 
 
-    async def add_comment(self, deal_id: int, message: str, attachments: list = []) -> bool:
+    async def add_comment(self, deal_id: int, message: str, attachments: list = [], email: str = None, user_id: int = None) -> bool:
         """Adiciona um comentário ao Deal via Bitrix."""
-        comment_id = await self.bitrix.add_comment(deal_id, message, attachments)
+        
+        # Tenta descobrir o ID do Contato no Bitrix para atribuir a autoria
+        author_id = None
+        if email:
+            contact = await self.bitrix.get_contact_by_email(email)
+            if contact:
+                author_id = contact.get("ID")
+                print(f"👤 [AddComment] Autor identificado como Contato Bitrix ID: {author_id}")
+
+        comment_id = await self.bitrix.add_comment(deal_id, message, attachments, author_id=author_id)
         if comment_id:
             # --- Real-time Broadcast ---
             try:
-                from app.providers.websocket import manager
+                from app.services.websocket import manager
                 from app.schemas.activity import ActivitySchema, ActivityFileSchema
 
                 # Busca Deal para ter o ID interno
@@ -266,14 +273,16 @@ class DealService:
                     files=temp_files,
                     # Campos Opcionais obrigatórios pelo Schema (se não tiver default)
                     responsible_id=str(deal.created_by_id) if deal else None,
-                    responsible_name=None,
-                    responsible_email=None,
-                    sender_email=None,
-                    to_email=None,
-                    from_email=None,
-                    receiver_email=None,
+                    responsible_name=deal.responsible if deal else None,
+                    responsible_email=deal.responsible_email if deal else None,
+                    sender_email=deal.responsible_email if deal else None,
+                    to_email=deal.requester_email if deal else None, # Envia para o solicitante
+                    from_email=deal.responsible_email if deal else None, # Vem do responsável
+                    receiver_email=deal.requester_email if deal else None,
                     author_id=None,
                     editor_id=None,
+                    contact_id=None, # Comentário via API (Saída)
+                    user_id=deal.user_id if deal else None, # Vínculo com usuário local
                     read_confirmed=None,
                     file_id=None,
                     file_url=None,
@@ -314,6 +323,10 @@ class DealService:
                     "description": message,
                     "body_html": message,
                     "description_type": "3",
+                    "sender_email": deal.responsible_email if deal else None,
+                    "to_email": deal.requester_email if deal else None,
+                    "from_email": deal.responsible_email if deal else None,
+                    "receiver_email": deal.requester_email if deal else None,
                     "created_at_bitrix": datetime.now(timezone.utc)
                 }
 
