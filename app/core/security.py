@@ -1,10 +1,29 @@
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status, Request, WebSocket
 from jose import jwt, JWTError
 from app.core.config import settings
 from app.models import UserModel
 from app.core.database import session_db 
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.users import UserRepository
+
+async def get_current_user_ws(websocket: WebSocket, db_session: AsyncSession = Depends(session_db)):
+    token = websocket.cookies.get("access_token")
+
+    if not token:
+        return None # Retorna None para tratar no endpoint (fechar conexão)
+
+    try:
+        payload = jwt.decode(token, settings['SECRET_KEY'], algorithms=[settings['ALGORITHM']])
+        token_user_id: str = payload.get("sub")
+        
+        if token_user_id is None:
+            return None
+            
+    except JWTError:
+        return None
+    
+    user = await UserRepository(db_session).get_by_id(int(token_user_id))
+    return user
 
 async def get_current_user_from_cookie(request: Request,  db_session: AsyncSession = Depends(session_db)):
     token = request.cookies.get("access_token") 

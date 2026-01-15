@@ -286,16 +286,39 @@ class WebhookService:
             # Injeta ID do Bitrix no payload para o Front reconhecer
             payload["bitrix_deal_id"] = bitrix_deal_id
 
+            # 1. Broadcast para quem está DENTRO do Ticket (Sem filtro, assume que quem tem link pode ver ou front filtra)
             await manager.broadcast(
                 message={"type": "NEW_ACTIVITY", "payload": payload},
                 deal_id=str(bitrix_deal_id)
             )
 
-            # Broadcast também para o Dashboard Global
-            await manager.broadcast(
-                message={"type": "NEW_ACTIVITY", "payload": payload},
-                deal_id="dashboard"
-            )
+            # 2. Broadcast GLOBAL (Dashboard) - EXIGE FILTRO
+            # Quem deve receber?
+            # - Responsável pelo Ticket
+            # - Solicitante (Se for usuário interno)
+            
+            target_users = set()
+            deal = await self.deal_repo.get_by_deal_id(bitrix_deal_id)
+            
+            if deal:
+                # Add Responsável
+                if deal.responsible_email:
+                    resp_user = await self.user_repo.get_by_email(deal.responsible_email)
+                    if resp_user: target_users.add(resp_user.id)
+                
+                # Add Solicitante
+                if deal.requester_email:
+                    req_user = await self.user_repo.get_by_email(deal.requester_email)
+                    if req_user: target_users.add(req_user.id)
+            
+            # Se ninguém for encontrado (ex: email externo), ninguém recebe no dashboard (seguro)
+            if target_users:
+                print(f"🎯 [Broadcast] Filtrando notificação global para Users IDs: {target_users}")
+                await manager.broadcast(
+                    message={"type": "NEW_ACTIVITY", "payload": payload},
+                    deal_id="dashboard",
+                    target_users=list(target_users)
+                )
 
         except Exception as e:
             print(f"⚠️ Erro Broadcast Webhook: {e}")

@@ -37,16 +37,18 @@ class StorageProvider:
             secret_key=settings["MINIO_SECRET_KEY"],
             secure=True,
             http_client=PoolManager(
-                timeout=120.0,
-                retries=3,
+                timeout=2.0,
+                retries=1,
                 maxsize=10
             )
         )
         self.bucket_name = "anexos-email-bitrix"
         
+        self.connected = True
         try:
             self._ensure_bucket()
         except Exception as e:
+            self.connected = False
             print(f"⚠️ [MinIO] Não foi possível conectar ao Storage na inicialização: {e}")
 
     def _ensure_bucket(self):
@@ -60,6 +62,8 @@ class StorageProvider:
 
     def upload_file(self, file_data: bytes, filename: str) -> str | None:
         """Faz upload de bytes para o MinIO. Retorna o 'Object Name' (Key) salvo."""
+        if not self.connected:
+            return None        
         try:
             content_type, _ = mimetypes.guess_type(filename)
             if not content_type:
@@ -85,6 +89,9 @@ class StorageProvider:
 
     def get_presigned_url(self, object_name: str, expiration_hours: int = 2) -> str | None:
         """Gera uma URL temporária (GET) para acessar o arquivo."""
+        if not self.connected:
+            return None
+
         if not object_name: return None
         
         # Se for URL completa, tenta extrair a chave (path) relativa
