@@ -40,7 +40,7 @@ class WebSocketManager:
                 # Filtragem de Usuários (Se target_users for informado)
                 if target_users is not None:
                      if not user or user.id not in target_users:
-                         # logger.debug(f"   🚫 User {user.id if user else 'Anon'} ignorado (Não está na lista de alvos).")
+                         logger.info(f"   🚫 User {user.id if user else 'Anon'} ignorado (Não está na lista de alvos).")
                          continue
 
                 try:

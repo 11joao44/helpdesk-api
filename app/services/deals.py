@@ -157,10 +157,15 @@ class DealService:
                             deal_id=str(data.deal_id)
                         )
 
-                        # Broadcast Dashboard
+                        # Broadcast Dashboard (Filtering)
+                        target_users = []
+                        if deal.user_id: target_users.append(deal.user_id)
+                        if deal.responsible_id: target_users.append(deal.responsible_id)
+                        
                         await manager.broadcast(
                             message={"type": "NEW_ACTIVITY", "payload": activity_schema.model_dump(mode='json')},
-                            deal_id="dashboard"
+                            deal_id="dashboard",
+                            target_users=target_users
                         )
                         
                         # --- Persistência de Arquivos e Status ---
@@ -297,10 +302,21 @@ class DealService:
                     deal_id=str(deal_id)
                 )
 
-                # Broadcast Dashboard
+                # Broadcast Dashboard (Filtering & Echo Suppression)
+                target_users = []
+                # 1. Adiciona participantes do Deal
+                if deal.user_id: target_users.append(deal.user_id)
+                if deal.responsible_id: target_users.append(deal.responsible_id)
+                
+                # 2. Echo Suppression (Remove quem fez a ação)
+                if user_id and user_id in target_users:
+                    target_users.remove(user_id)
+                    print(f"🔇 [AddComment] Echo Suppression: Removendo User {user_id} da lista de envio.")
+
                 await manager.broadcast(
                     message={"type": "NEW_ACTIVITY", "payload": activity_payload.model_dump(mode='json')},
-                    deal_id="dashboard"
+                    deal_id="dashboard",
+                    target_users=target_users
                 )
                 
                 # --- Persistir no Banco de Dados ---
