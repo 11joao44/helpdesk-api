@@ -1,42 +1,66 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status, Request, WebSocket
 from jose import jwt, JWTError
 from app.core.config import settings
-from app.models.users import UserModel
-from app.repositories.users import UserRepository
+from app.models import UserModel
+from app.core.database import session_db 
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import session_db
+from app.repositories.users import UserRepository
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+async def get_current_user_ws(websocket: WebSocket, db_session: AsyncSession = Depends(session_db)):
+    token = websocket.cookies.get("access_token")
 
-async def locked_route(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(session_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED, 
-        detail="Não autenticado.", 
-        headers={"WWW-Authenticate": "Bearer"}
-    )
+    if not token:
+        return None # Retorna None para tratar no endpoint (fechar conexão)
 
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-
-        user_id: str = payload.get("sub")
-
-        if user_id is None:
-            raise credentials_exception
+        payload = jwt.decode(token, settings['SECRET_KEY'], algorithms=[settings['ALGORITHM']])
+        token_user_id: str = payload.get("sub")
         
-        user_id = int(user_id)
+        if token_user_id is None:
+            return None
+            
     except JWTError:
-        raise credentials_exception
-
-    user_repo = UserRepository(db)
-    user = await user_repo.get_by_id(user_id)
+        return None
     
-    if user is None:
-        raise credentials_exception
-    
+    user = await UserRepository(db_session).get_by_id(int(token_user_id))
     return user
 
-def require_admin(user: UserModel = Depends(locked_route)):
+async def get_current_user_from_cookie(request: Request,  db_session: AsyncSession = Depends(session_db)):
+    token = request.cookies.get("access_token") 
+
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autenticado (Token ausente)")
+
+    try:
+        payload = jwt.decode(token, settings['SECRET_KEY'], algorithms=[settings['ALGORITHM']])
+        token_user_id: str = payload.get("sub") 
+        
+        if token_user_id is None:
+            raise HTTPException(status_code=401, detail="Token inválido (sem sub)")
+            
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido ou expirado")
+    
+    user = await UserRepository(db_session).get_by_id(int(token_user_id))
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuário não encontrado")
+        
+    return user
+
+# Dependência de Admin (Reutiliza a anterior)
+async def require_admin(user: UserModel = Depends(get_current_user_from_cookie)):
     if not user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ação restrita a administradores.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Ação restrita a administradores."
+        )
     return user
+
+from datetime import timezone, timedelta, datetime
+
+def create_reset_token(email: str):
+    expire = datetime.now(timezone.utc) + timedelta(minutes=30)
+    to_encode = {"sub": email, "exp": expire, "type": "reset"}
+    encoded_jwt = jwt.encode(to_encode, settings['SECRET_KEY'], algorithm=settings['ALGORITHM'])
+    return encoded_jwt

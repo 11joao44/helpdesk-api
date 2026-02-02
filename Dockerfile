@@ -1,30 +1,56 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
+
+FROM python:3.14-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-ENV PYTHONUNBUFFERED=1 \
-    UV_PROJECT_ENVIRONMENT="/usr/local" \
-    UV_COMPILE_BYTECODE=1
-
 WORKDIR /code
 
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PYTHONUNBUFFERED=1
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+    build-essential \
     libpq-dev \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
 
-# --frozen: Garante que usa versões exatas do uv.lock (Crucial para produção)
-# --no-dev: Não instala pytest, black, etc. (Economiza espaço e segurança)
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-install-project
+
+########################################
+# Etapa 2: Runtime (Imagem Final Leve)
+########################################
+FROM python:3.14-slim AS runtime
+
+WORKDIR /code
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m appuser
+
+COPY --from=builder /code/.venv /code/.venv
 
 COPY . .
 
-RUN useradd -m appuser && chown -R appuser /code
+RUN chown -R appuser:appuser /code
+
 USER appuser
+
+ENV PATH="/code/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    UVICORN_WORKERS=1 \
+    PORT=8024
 
 EXPOSE 8024
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8024", "--proxy-headers"]
+# Healthcheck (Verifica se a API está respondendo)
+# HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
+#     CMD curl -f http://localhost:8024/ || exit 1
+
+ENTRYPOINT ["sh", "-c"]
+CMD ["uvicorn main:app --host 0.0.0.0 --port 8024 --workers $UVICORN_WORKERS --proxy-headers"]

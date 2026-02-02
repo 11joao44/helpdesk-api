@@ -1,0 +1,82 @@
+from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
+from app.schemas.users import UserSimpleOut
+
+
+
+class ActivityFileSchema(BaseModel):
+    id: int
+    bitrix_file_id: Optional[int]
+    file_url: str
+    filename: Optional[str]
+    created_at: datetime
+
+    class Config: from_attributes = True    
+
+
+class ActivitySchema(BaseModel):
+    id: int
+    
+    # ID do Bitrix
+    activity_id: int
+    
+    # Chave Estrangeira
+    deal_id: int
+
+    # Campos de Tipo/Provedor
+    owner_type_id: Optional[str] 
+    type_id: Optional[str] 
+    provider_id: Optional[str]
+    provider_type_id: Optional[str]
+    
+    # Detalhes
+    direction: Optional[str]
+    subject: Optional[str] = None
+    priority: Optional[str]
+    responsible_id: Optional[str]
+    responsible_name: Optional[str]
+    responsible_email: Optional[str]
+    responsible_profile_picture_url: Optional[str] = None
+    
+    # Conteúdo
+    description: Optional[str]
+    body_html: Optional[str]
+    description_type: Optional[str]
+    
+    # E-mails
+    sender_email: Optional[str]
+    to_email: Optional[str]
+    from_email: Optional[str]
+    receiver_email: Optional[str]
+    
+    # Metadados
+    author_id: Optional[str] = None
+    editor_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    user_id: Optional[int] = None
+    user: Optional["UserSimpleOut"] = None
+    read_confirmed: Optional[int] = None
+    
+    # Arquivos (Legado)
+    file_id: Optional[int]
+    file_url: Optional[str]
+    
+    # Arquivos (Lista)
+    files: list[ActivityFileSchema] = []
+
+    # Datas
+    created_at_bitrix: Optional[datetime]
+    created_at: datetime
+    
+    # Campo computado para o frontend validar ID do Bitrix
+    @property
+    def bitrix_deal_id(self) -> Optional[int]:
+        if hasattr(self, "deal") and self.deal:
+             return self.deal.deal_id
+        return None
+
+    class Config: from_attributes = True
+
+# Resolve Forward References
+ActivitySchema.model_rebuild()

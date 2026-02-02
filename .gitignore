@@ -5,8 +5,18 @@ build/
 dist/
 wheels/
 *.egg-info
+collections.json
+.cursorrules
+.cursorignore
+FRONTEND_ARCHITECTURE.md
+temp_rules_update.md
 
 # Virtual environments
 .venv
 .env
 main.ipynb
+ngrok.exe
+API_DOCS.md
+AI_INSTRUCTIONS.md
+debug_fields.p
+/scripts

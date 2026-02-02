@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr, ConfigDict
 from datetime import datetime
 
 class UserSchema(BaseModel):
-    username: str
+    full_name: str
     email: EmailStr
     is_active: bool
     is_admin: bool
@@ -14,25 +14,48 @@ class UserSchema(BaseModel):
     )
 
 class UserRegister(BaseModel):
-    username: str
+    full_name: str
     email: EmailStr
     password: str
+    department: str
+    filial: str
+    cpf: str
+    matricula: str
+    phone_number: str
+
 class UserDetailsSchema(UserSchema):
-    username: str
+    full_name: str
     email: EmailStr
     password: str
+
 class UserLogin(BaseModel):
-    email: EmailStr
+    login: str
     password: str
 
 class UserOut(BaseModel):
     id: int
-    username: str
+    full_name: str
     email: EmailStr
+    filial: str
+    matricula: str
+    department: str
     is_active: bool
     is_admin: Optional[bool] = False
     created_at: datetime
     updated_at:  Optional[datetime] = None
+    profile_picture_url: Optional[str] = None
+    phone_number: Optional[str] = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid"
+    )
+
+class UserSimpleOut(BaseModel):
+    id: int
+    full_name: str
+    email: EmailStr
+    profile_picture_url: Optional[str] = None
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -50,3 +73,17 @@ class LoginResponse(BaseModel):
 
 class TokenRefreshRequest(BaseModel):
     refresh_token: str
+
+class PhoneUpdateRequest(BaseModel):
+    phone_number: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+class ChackAvailability(BaseModel):
+    field: str
+    value: str

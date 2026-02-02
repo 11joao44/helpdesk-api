@@ -1,11 +1,49 @@
 services:
   backend:
     build: .
-    container_name: carvalima_helpdesk_api
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8024 --reload
-    volumes:
-      - .:/code  # Sincroniza pasta local com container (Hot Reload)
-    ports:
-      - "8024:8024"
-    env_file:
-      - .env.prod
+    user: root
+    expose:
+      - "8024"
+    environment:
+      - DOMAIN_NAME
+      - SUB_DOMAIN_NAME
+      - CI_PROJECT_NAME
+      - CI_SERVER_HOST
+      - CI_PROJECT_PATH
+      - CI_REGISTRY_IMAGE
+      - IMAGE_VERSION
+      - BITRIX_INBOUND_URL
+      - HELPDESK_SECRET_KEY
+      - HELPDESK_DB_DBNAME_1
+      - HELPDESK_DB_HOST_1
+      - HELPDESK_DB_USER_1
+      - HELPDESK_DB_PASS_1
+      - HELPDESK_DB_PORT_1
+      - HELPDESK_DB_DBNAME_2
+      - HELPDESK_DB_HOST_2
+      - HELPDESK_DB_USER_2
+      - HELPDESK_DB_PASS_2
+      - HELPDESK_DB_PORT_2
+      - HELPDESK_DB_DBNAME_3
+      - HELPDESK_DB_HOST_3
+      - HELPDESK_DB_USER_3
+      - HELPDESK_DB_PASS_3
+      - HELPDESK_DB_PORT_3
+      - WEBMAIL_USUARIO
+      - MINIO_USER
+      - MINIO_SENHA
+      - WEBMAIL_SENHA
+      - IP_SERVIDOR_NFS
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.helpdesk.rule=Host(`${SUB_DOMAIN_NAME}.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.helpdesk.entrypoints=websecure"
+      - "traefik.http.routers.helpdesk.tls=true"
+      - "traefik.http.services.helpdesk.loadbalancer.server.port=8024"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
+
