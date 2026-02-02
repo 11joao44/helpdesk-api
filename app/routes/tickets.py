@@ -79,20 +79,14 @@ async def send_email_route(payload: TicketSendEmail, service: DealService = Depe
     return await service.send_email(payload)
 
 
-@router.post(
-    "/ticket", response_model=DealCardCreateSchema, status_code=status.HTTP_201_CREATED
-)
-async def create_ticket_endpoint(
-    data: TicketCreateRequest, service: DealService = Depends(get_service)
-):
+@router.post("/ticket", response_model=DealCardCreateSchema, status_code=status.HTTP_201_CREATED)
+async def create_ticket_endpoint(data: TicketCreateRequest, service: DealService = Depends(get_service)):
     """Cria um ticket no Bitrix e salva no banco local."""
     return await service.create_ticket(data)
 
 
 @router.post("/close-ticket")
-async def close_ticket_route(
-    payload: TicketCloseRequest, service: DealService = Depends(get_service)
-):
+async def close_ticket_route(payload: TicketCloseRequest, service: DealService = Depends(get_service)):
     """Encerra um ticket, move para etapa 'Ganho' no Bitrix e salva avaliação."""
     return await service.close_ticket(payload)
 

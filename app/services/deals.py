@@ -374,11 +374,8 @@ class DealService:
 
     async def create_ticket(self, data: TicketCreateRequest) -> DealModel:
         deal_id = await self.bitrix.create_deal(data)
-        
-        print(f"🛠️ [DealService] create_ticket: deal_id={deal_id}")
 
-        if not deal_id:
-            raise Exception("Falha de comunicação com Bitrix24")
+        if not deal_id: raise Exception("Falha de comunicação com Bitrix24")
 
         # --- Busca Detalhes Ricos do Deal no Bitrix (Responsible, etc) ---
         bitrix_deal_data = await self.bitrix.get_deal(deal_id)
