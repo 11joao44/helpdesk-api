@@ -26,5 +26,3 @@ deploy:
     - safe=$(echo "$raw" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/-/g')
     - export COMPOSE_PROJECT_NAME="$safe"
 
-    # sobe sem derrubar execuções anteriores
-    - docker compose up --build -d
